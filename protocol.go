@@ -25,6 +25,25 @@ const (
 	EventTypeRequestComplete     EventType = "request_complete"
 	EventTypeWebSocketFrame      EventType = "websocket_frame"
 	EventTypeConfigure           EventType = "configure"
+	EventTypeGuardrailInspect    EventType = "guardrail_inspect"
+)
+
+// GuardrailInspectionType represents the type of guardrail inspection.
+type GuardrailInspectionType string
+
+const (
+	GuardrailInspectionTypePromptInjection GuardrailInspectionType = "prompt_injection"
+	GuardrailInspectionTypePIIDetection    GuardrailInspectionType = "pii_detection"
+)
+
+// DetectionSeverity represents the severity level of a detection.
+type DetectionSeverity string
+
+const (
+	DetectionSeverityLow      DetectionSeverity = "low"
+	DetectionSeverityMedium   DetectionSeverity = "medium"
+	DetectionSeverityHigh     DetectionSeverity = "high"
+	DetectionSeverityCritical DetectionSeverity = "critical"
 )
 
 // RequestMetadata contains metadata about the request being processed.
@@ -125,6 +144,105 @@ func (e *WebSocketFrameEvent) DecodedData() ([]byte, error) {
 type ConfigureEvent struct {
 	AgentID string                 `json:"agent_id"`
 	Config  map[string]interface{} `json:"config"`
+}
+
+// TextSpan represents a span of text with start and end positions.
+type TextSpan struct {
+	Start int `json:"start"`
+	End   int `json:"end"`
+}
+
+// GuardrailDetection represents a single detection from guardrail inspection.
+type GuardrailDetection struct {
+	Category    string            `json:"category"`
+	Description string            `json:"description"`
+	Severity    DetectionSeverity `json:"severity"`
+	Confidence  *float64          `json:"confidence,omitempty"`
+	Span        *TextSpan         `json:"span,omitempty"`
+}
+
+// NewGuardrailDetection creates a new detection with required fields.
+func NewGuardrailDetection(category, description string) *GuardrailDetection {
+	return &GuardrailDetection{
+		Category:    category,
+		Description: description,
+		Severity:    DetectionSeverityMedium,
+	}
+}
+
+// WithSeverity sets the severity level.
+func (d *GuardrailDetection) WithSeverity(severity DetectionSeverity) *GuardrailDetection {
+	d.Severity = severity
+	return d
+}
+
+// WithConfidence sets the confidence score.
+func (d *GuardrailDetection) WithConfidence(confidence float64) *GuardrailDetection {
+	d.Confidence = &confidence
+	return d
+}
+
+// WithSpan sets the text span location.
+func (d *GuardrailDetection) WithSpan(start, end int) *GuardrailDetection {
+	d.Span = &TextSpan{Start: start, End: end}
+	return d
+}
+
+// GuardrailInspectEvent represents a guardrail inspection request.
+type GuardrailInspectEvent struct {
+	CorrelationID  string                  `json:"correlation_id"`
+	InspectionType GuardrailInspectionType `json:"inspection_type"`
+	Content        string                  `json:"content"`
+	Model          *string                 `json:"model,omitempty"`
+	Categories     []string                `json:"categories"`
+	RouteID        *string                 `json:"route_id,omitempty"`
+	Metadata       map[string]string       `json:"metadata"`
+}
+
+// GuardrailResponse represents the response from guardrail inspection.
+type GuardrailResponse struct {
+	Detected        bool                  `json:"detected"`
+	Confidence      float64               `json:"confidence"`
+	Detections      []*GuardrailDetection `json:"detections"`
+	RedactedContent *string               `json:"redacted_content,omitempty"`
+}
+
+// NewGuardrailResponse creates a clean response indicating nothing detected.
+func NewGuardrailResponse() *GuardrailResponse {
+	return &GuardrailResponse{
+		Detected:   false,
+		Confidence: 0.0,
+		Detections: []*GuardrailDetection{},
+	}
+}
+
+// NewGuardrailResponseWithDetection creates a response with a single detection.
+func NewGuardrailResponseWithDetection(detection *GuardrailDetection) *GuardrailResponse {
+	confidence := 1.0
+	if detection.Confidence != nil {
+		confidence = *detection.Confidence
+	}
+	return &GuardrailResponse{
+		Detected:   true,
+		Confidence: confidence,
+		Detections: []*GuardrailDetection{detection},
+	}
+}
+
+// AddDetection adds a detection to the response.
+func (r *GuardrailResponse) AddDetection(detection *GuardrailDetection) *GuardrailResponse {
+	r.Detected = true
+	if detection.Confidence != nil && *detection.Confidence > r.Confidence {
+		r.Confidence = *detection.Confidence
+	}
+	r.Detections = append(r.Detections, detection)
+	return r
+}
+
+// WithRedactedContent sets the redacted content for PII detection.
+func (r *GuardrailResponse) WithRedactedContent(content string) *GuardrailResponse {
+	r.RedactedContent = &content
+	return r
 }
 
 // ProtocolEvent represents a protocol event from the proxy.

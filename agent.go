@@ -51,6 +51,10 @@ type Agent interface {
 	// OnRequestComplete is called when request processing is complete.
 	// Override for logging, metrics, or cleanup.
 	OnRequestComplete(ctx context.Context, request *Request, status int, durationMS int)
+
+	// OnGuardrailInspect inspects content for guardrail violations.
+	// Called for prompt injection detection or PII detection.
+	OnGuardrailInspect(ctx context.Context, event *GuardrailInspectEvent) *GuardrailResponse
 }
 
 // BaseAgent provides default implementations for all Agent methods.
@@ -102,6 +106,11 @@ func (a *BaseAgent) OnResponseBody(ctx context.Context, request *Request, respon
 
 // OnRequestComplete provides a default no-op handler.
 func (a *BaseAgent) OnRequestComplete(ctx context.Context, request *Request, status int, durationMS int) {
+}
+
+// OnGuardrailInspect provides a default clean response.
+func (a *BaseAgent) OnGuardrailInspect(ctx context.Context, event *GuardrailInspectEvent) *GuardrailResponse {
+	return NewGuardrailResponse()
 }
 
 // ConfigurableAgent is an agent with typed configuration support.

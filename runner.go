@@ -73,6 +73,8 @@ func (h *AgentHandler) HandleEvent(ctx context.Context, event map[string]interfa
 		return h.handleResponseBodyChunk(ctx, payload)
 	case EventTypeRequestComplete:
 		return h.handleRequestComplete(ctx, payload)
+	case EventTypeGuardrailInspect:
+		return h.handleGuardrailInspect(ctx, payload)
 	default:
 		log.Warn().Str("event_type", eventType).Msg("Unknown event type")
 		return Allow().Build(), nil
@@ -228,6 +230,18 @@ func (h *AgentHandler) handleRequestComplete(ctx context.Context, payload map[st
 	}
 
 	return map[string]interface{}{"success": true}, nil
+}
+
+func (h *AgentHandler) handleGuardrailInspect(ctx context.Context, payload map[string]interface{}) (interface{}, error) {
+	jsonBytes, _ := json.Marshal(payload)
+	var event GuardrailInspectEvent
+	if err := json.Unmarshal(jsonBytes, &event); err != nil {
+		log.Error().Err(err).Msg("Failed to parse guardrail inspect event")
+		return NewGuardrailResponse(), nil
+	}
+
+	response := h.agent.OnGuardrailInspect(ctx, &event)
+	return response, nil
 }
 
 // AgentRunner runs an agent server.
