@@ -22,9 +22,10 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quickstart</a> •
-  <a href="#core-concepts">API Reference</a> •
-  <a href="#examples">Examples</a>
+  <a href="docs/index.md">Documentation</a> •
+  <a href="docs/quickstart.md">Quickstart</a> •
+  <a href="docs/api.md">API Reference</a> •
+  <a href="docs/examples.md">Examples</a>
 </p>
 
 </div>
@@ -401,6 +402,8 @@ routes {
 | `timeout-ms` | Timeout for agent calls | `1000` |
 | `failure-mode` | `"open"` (allow on failure) or `"closed"` (block on failure) | `"open"` |
 
+See [docs/configuration.md](docs/configuration.md) for complete configuration reference.
+
 ---
 
 ## Examples
@@ -418,6 +421,8 @@ Run an example:
 ```bash
 go run ./examples/simple_agent --socket /tmp/simple-agent.sock
 ```
+
+See [docs/examples.md](docs/examples.md) for more patterns: authentication, rate limiting, IP filtering, header transformation, and more.
 
 ---
 
