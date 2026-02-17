@@ -1,4 +1,4 @@
-package sentinel
+package zentinel
 
 import (
 	"context"
@@ -27,7 +27,7 @@ type RunnerConfig struct {
 // DefaultRunnerConfig returns the default runner configuration.
 func DefaultRunnerConfig() RunnerConfig {
 	return RunnerConfig{
-		SocketPath: "/tmp/sentinel-agent.sock",
+		SocketPath: "/tmp/zentinel-agent.sock",
 		Name:       "agent",
 		JSONLogs:   false,
 		LogLevel:   "info",
@@ -432,7 +432,7 @@ func ParseArgs() RunnerConfig {
 // Example:
 //
 //	func main() {
-//	    sentinel.RunAgent(&MyAgent{})
+//	    zentinel.RunAgent(&MyAgent{})
 //	}
 func RunAgent(agent Agent) {
 	config := ParseArgs()

@@ -1,4 +1,4 @@
-// Reverse connection Sentinel v2 agent example.
+// Reverse connection Zentinel v2 agent example.
 //
 // This example demonstrates a v2 agent using reverse connections:
 // - Agent initiates connection to the proxy (useful behind NAT/firewall)
@@ -22,8 +22,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
-	"github.com/raskell-io/sentinel-agent-go-sdk/v2"
+	zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+	"github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 )
 
 // WAFAgentV2 is a simple WAF agent using reverse connections.
@@ -72,7 +72,7 @@ func (a *WAFAgentV2) Name() string {
 }
 
 // OnRequest inspects request headers for malicious patterns.
-func (a *WAFAgentV2) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *WAFAgentV2) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
 	a.requestCount.Add(1)
 
 	// Check URI for malicious patterns
@@ -80,7 +80,7 @@ func (a *WAFAgentV2) OnRequest(ctx context.Context, request *sentinel.Request) *
 	for _, pattern := range a.blockedPatterns {
 		if strings.Contains(strings.ToLower(uri), strings.ToLower(pattern)) {
 			a.blockCount.Add(1)
-			return sentinel.Deny().
+			return zentinel.Deny().
 				WithBody("Request blocked by WAF").
 				WithTag("waf").
 				WithRuleID("URI_PATTERN_MATCH").
@@ -100,7 +100,7 @@ func (a *WAFAgentV2) OnRequest(ctx context.Context, request *sentinel.Request) *
 		for _, pattern := range a.blockedPatterns {
 			if strings.Contains(strings.ToLower(headerValue), strings.ToLower(pattern)) {
 				a.blockCount.Add(1)
-				return sentinel.Deny().
+				return zentinel.Deny().
 					WithBody("Request blocked by WAF").
 					WithTag("waf").
 					WithRuleID("HEADER_PATTERN_MATCH").
@@ -111,18 +111,18 @@ func (a *WAFAgentV2) OnRequest(ctx context.Context, request *sentinel.Request) *
 	}
 
 	// Add WAF header to indicate inspection
-	return sentinel.Allow().
+	return zentinel.Allow().
 		AddRequestHeader("X-WAF-Inspected", "true")
 }
 
 // OnRequestBody inspects request body for malicious patterns.
-func (a *WAFAgentV2) OnRequestBody(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *WAFAgentV2) OnRequestBody(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
 	body := request.BodyString()
 
 	for _, pattern := range a.blockedPatterns {
 		if strings.Contains(strings.ToLower(body), strings.ToLower(pattern)) {
 			a.blockCount.Add(1)
-			return sentinel.Deny().
+			return zentinel.Deny().
 				WithBody("Request body blocked by WAF").
 				WithTag("waf").
 				WithRuleID("BODY_PATTERN_MATCH").
@@ -131,7 +131,7 @@ func (a *WAFAgentV2) OnRequestBody(ctx context.Context, request *sentinel.Reques
 		}
 	}
 
-	return sentinel.Allow()
+	return zentinel.Allow()
 }
 
 // HealthCheck returns detailed health status.

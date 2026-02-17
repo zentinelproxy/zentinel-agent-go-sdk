@@ -11,12 +11,12 @@ import (
 	"regexp"
 	"strings"
 
-	sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+	zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
 // GuardrailAgent inspects content for prompt injection and PII.
 type GuardrailAgent struct {
-	sentinel.BaseAgent
+	zentinel.BaseAgent
 	injectionPatterns []injectionPattern
 	piiPatterns       []piiPattern
 }
@@ -59,29 +59,29 @@ func (a *GuardrailAgent) Name() string {
 }
 
 // OnGuardrailInspect inspects content for prompt injection or PII.
-func (a *GuardrailAgent) OnGuardrailInspect(ctx context.Context, event *sentinel.GuardrailInspectEvent) *sentinel.GuardrailResponse {
+func (a *GuardrailAgent) OnGuardrailInspect(ctx context.Context, event *zentinel.GuardrailInspectEvent) *zentinel.GuardrailResponse {
 	switch event.InspectionType {
-	case sentinel.GuardrailInspectionTypePromptInjection:
+	case zentinel.GuardrailInspectionTypePromptInjection:
 		return a.detectPromptInjection(event.Content)
-	case sentinel.GuardrailInspectionTypePIIDetection:
+	case zentinel.GuardrailInspectionTypePIIDetection:
 		return a.detectPII(event.Content)
 	default:
-		return sentinel.NewGuardrailResponse()
+		return zentinel.NewGuardrailResponse()
 	}
 }
 
-func (a *GuardrailAgent) detectPromptInjection(content string) *sentinel.GuardrailResponse {
-	response := sentinel.NewGuardrailResponse()
+func (a *GuardrailAgent) detectPromptInjection(content string) *zentinel.GuardrailResponse {
+	response := zentinel.NewGuardrailResponse()
 
 	for _, pattern := range a.injectionPatterns {
 		loc := pattern.regex.FindStringIndex(content)
 		if loc != nil {
-			detection := &sentinel.GuardrailDetection{
+			detection := &zentinel.GuardrailDetection{
 				Category:    "prompt_injection." + pattern.category,
 				Description: "Potential prompt injection detected: " + strings.ReplaceAll(pattern.category, "_", " "),
-				Severity:    sentinel.DetectionSeverityHigh,
+				Severity:    zentinel.DetectionSeverityHigh,
 				Confidence:  floatPtr(0.85),
-				Span:        &sentinel.TextSpan{Start: loc[0], End: loc[1]},
+				Span:        &zentinel.TextSpan{Start: loc[0], End: loc[1]},
 			}
 			response.AddDetection(detection)
 		}
@@ -90,20 +90,20 @@ func (a *GuardrailAgent) detectPromptInjection(content string) *sentinel.Guardra
 	return response
 }
 
-func (a *GuardrailAgent) detectPII(content string) *sentinel.GuardrailResponse {
-	response := sentinel.NewGuardrailResponse()
+func (a *GuardrailAgent) detectPII(content string) *zentinel.GuardrailResponse {
+	response := zentinel.NewGuardrailResponse()
 	redacted := content
 
 	for _, pattern := range a.piiPatterns {
 		matches := pattern.regex.FindAllStringIndex(content, -1)
 		for _, loc := range matches {
 			matched := content[loc[0]:loc[1]]
-			detection := &sentinel.GuardrailDetection{
+			detection := &zentinel.GuardrailDetection{
 				Category:    "pii." + pattern.category,
 				Description: pattern.description + " detected",
-				Severity:    sentinel.DetectionSeverityMedium,
+				Severity:    zentinel.DetectionSeverityMedium,
 				Confidence:  floatPtr(0.95),
-				Span:        &sentinel.TextSpan{Start: loc[0], End: loc[1]},
+				Span:        &zentinel.TextSpan{Start: loc[0], End: loc[1]},
 			}
 			response.AddDetection(detection)
 			redacted = strings.Replace(redacted, matched, "[REDACTED_"+strings.ToUpper(pattern.category)+"]", 1)
@@ -122,5 +122,5 @@ func floatPtr(f float64) *float64 {
 }
 
 func main() {
-	sentinel.RunAgent(NewGuardrailAgent())
+	zentinel.RunAgent(NewGuardrailAgent())
 }

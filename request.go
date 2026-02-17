@@ -1,4 +1,4 @@
-package sentinel
+package zentinel
 
 import (
 	"encoding/json"

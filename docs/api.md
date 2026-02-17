@@ -2,10 +2,10 @@
 
 ## Agent
 
-The interface for all Sentinel agents.
+The interface for all Zentinel agents.
 
 ```go
-import sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+import zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 ```
 
 ### Required Methods
@@ -46,7 +46,7 @@ Called when request headers are received. This is the main entry point for reque
 OnRequestBody(ctx context.Context, request *Request) *Decision
 ```
 
-Called when the request body is available (requires body inspection to be enabled in Sentinel).
+Called when the request body is available (requires body inspection to be enabled in Zentinel).
 
 **Default**: Returns `Allow()`
 
@@ -84,7 +84,7 @@ Embed `BaseAgent` to get default implementations for all optional methods:
 
 ```go
 type MyAgent struct {
-    sentinel.BaseAgent
+    zentinel.BaseAgent
 }
 ```
 
@@ -101,12 +101,12 @@ type RateLimitConfig struct {
 }
 
 type RateLimitAgent struct {
-    *sentinel.ConfigurableAgentBase[RateLimitConfig]
+    *zentinel.ConfigurableAgentBase[RateLimitConfig]
 }
 
 func NewRateLimitAgent() *RateLimitAgent {
     return &RateLimitAgent{
-        ConfigurableAgentBase: sentinel.NewConfigurableAgent(RateLimitConfig{
+        ConfigurableAgentBase: zentinel.NewConfigurableAgent(RateLimitConfig{
             RequestsPerMinute: 60,
             Enabled:           true,
         }),
@@ -117,13 +117,13 @@ func (a *RateLimitAgent) Name() string {
     return "rate-limiter"
 }
 
-func (a *RateLimitAgent) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *RateLimitAgent) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
     cfg := a.Config()
     if !cfg.Enabled {
-        return sentinel.Allow()
+        return zentinel.Allow()
     }
     // Use cfg.RequestsPerMinute...
-    return sentinel.Allow()
+    return zentinel.Allow()
 }
 ```
 
@@ -152,7 +152,7 @@ Update the configuration.
 Fluent builder for agent decisions.
 
 ```go
-import sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+import zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 ```
 
 ### Factory Functions
@@ -162,7 +162,7 @@ import sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
 Create an allow decision (pass request through).
 
 ```go
-return sentinel.Allow()
+return zentinel.Allow()
 ```
 
 #### `Block(status int)`
@@ -170,8 +170,8 @@ return sentinel.Allow()
 Create a block decision with a status code.
 
 ```go
-return sentinel.Block(403)
-return sentinel.Block(500)
+return zentinel.Block(403)
+return zentinel.Block(500)
 ```
 
 #### `Deny()`
@@ -179,7 +179,7 @@ return sentinel.Block(500)
 Shorthand for `Block(403)`.
 
 ```go
-return sentinel.Deny()
+return zentinel.Deny()
 ```
 
 #### `Unauthorized()`
@@ -187,7 +187,7 @@ return sentinel.Deny()
 Shorthand for `Block(401)`.
 
 ```go
-return sentinel.Unauthorized()
+return zentinel.Unauthorized()
 ```
 
 #### `RateLimited()`
@@ -195,7 +195,7 @@ return sentinel.Unauthorized()
 Shorthand for `Block(429)`.
 
 ```go
-return sentinel.RateLimited()
+return zentinel.RateLimited()
 ```
 
 #### `Redirect(url string, status int)`
@@ -203,8 +203,8 @@ return sentinel.RateLimited()
 Create a redirect decision.
 
 ```go
-return sentinel.Redirect("https://example.com/login", 302)
-return sentinel.Redirect("https://example.com/new-path", 301)
+return zentinel.Redirect("https://example.com/login", 302)
+return zentinel.Redirect("https://example.com/new-path", 301)
 ```
 
 #### `RedirectPermanent(url string)`
@@ -212,7 +212,7 @@ return sentinel.Redirect("https://example.com/new-path", 301)
 Shorthand for `Redirect(url, 301)`.
 
 ```go
-return sentinel.RedirectPermanent("https://example.com/new-path")
+return zentinel.RedirectPermanent("https://example.com/new-path")
 ```
 
 #### `Challenge(challengeType string, params map[string]interface{})`
@@ -220,7 +220,7 @@ return sentinel.RedirectPermanent("https://example.com/new-path")
 Create a challenge decision (e.g., CAPTCHA).
 
 ```go
-return sentinel.Challenge("captcha", map[string]interface{}{"site_key": "..."})
+return zentinel.Challenge("captcha", map[string]interface{}{"site_key": "..."})
 ```
 
 ### Chaining Methods
@@ -232,7 +232,7 @@ All methods return `*Decision` for chaining.
 Set the response body for block decisions.
 
 ```go
-sentinel.Deny().WithBody("Access denied")
+zentinel.Deny().WithBody("Access denied")
 ```
 
 #### `WithJSONBody(value interface{})`
@@ -240,7 +240,7 @@ sentinel.Deny().WithBody("Access denied")
 Set a JSON response body. Automatically sets `Content-Type: application/json`.
 
 ```go
-sentinel.Block(400).WithJSONBody(map[string]string{"error": "Invalid request"})
+zentinel.Block(400).WithJSONBody(map[string]string{"error": "Invalid request"})
 ```
 
 #### `WithBlockHeader(name, value string)`
@@ -248,7 +248,7 @@ sentinel.Block(400).WithJSONBody(map[string]string{"error": "Invalid request"})
 Add a header to the block response.
 
 ```go
-sentinel.Deny().WithBlockHeader("X-Blocked-By", "my-agent")
+zentinel.Deny().WithBlockHeader("X-Blocked-By", "my-agent")
 ```
 
 #### `AddRequestHeader(name, value string)`
@@ -256,7 +256,7 @@ sentinel.Deny().WithBlockHeader("X-Blocked-By", "my-agent")
 Add a header to the upstream request.
 
 ```go
-sentinel.Allow().AddRequestHeader("X-User-ID", "123")
+zentinel.Allow().AddRequestHeader("X-User-ID", "123")
 ```
 
 #### `RemoveRequestHeader(name string)`
@@ -264,7 +264,7 @@ sentinel.Allow().AddRequestHeader("X-User-ID", "123")
 Remove a header from the upstream request.
 
 ```go
-sentinel.Allow().RemoveRequestHeader("Cookie")
+zentinel.Allow().RemoveRequestHeader("Cookie")
 ```
 
 #### `AddResponseHeader(name, value string)`
@@ -272,7 +272,7 @@ sentinel.Allow().RemoveRequestHeader("Cookie")
 Add a header to the client response.
 
 ```go
-sentinel.Allow().AddResponseHeader("X-Frame-Options", "DENY")
+zentinel.Allow().AddResponseHeader("X-Frame-Options", "DENY")
 ```
 
 #### `RemoveResponseHeader(name string)`
@@ -280,7 +280,7 @@ sentinel.Allow().AddResponseHeader("X-Frame-Options", "DENY")
 Remove a header from the client response.
 
 ```go
-sentinel.Allow().RemoveResponseHeader("Server")
+zentinel.Allow().RemoveResponseHeader("Server")
 ```
 
 ### Audit Methods
@@ -290,7 +290,7 @@ sentinel.Allow().RemoveResponseHeader("Server")
 Add an audit tag.
 
 ```go
-sentinel.Deny().WithTag("security")
+zentinel.Deny().WithTag("security")
 ```
 
 #### `WithTags(tags []string)`
@@ -298,7 +298,7 @@ sentinel.Deny().WithTag("security")
 Add multiple audit tags.
 
 ```go
-sentinel.Deny().WithTags([]string{"blocked", "rate-limit"})
+zentinel.Deny().WithTags([]string{"blocked", "rate-limit"})
 ```
 
 #### `WithRuleID(ruleID string)`
@@ -306,7 +306,7 @@ sentinel.Deny().WithTags([]string{"blocked", "rate-limit"})
 Add a rule ID for audit logging.
 
 ```go
-sentinel.Deny().WithRuleID("SQLI-001")
+zentinel.Deny().WithRuleID("SQLI-001")
 ```
 
 #### `WithConfidence(confidence float64)`
@@ -314,7 +314,7 @@ sentinel.Deny().WithRuleID("SQLI-001")
 Set a confidence score (0.0 to 1.0).
 
 ```go
-sentinel.Deny().WithConfidence(0.95)
+zentinel.Deny().WithConfidence(0.95)
 ```
 
 #### `WithReasonCode(code string)`
@@ -322,7 +322,7 @@ sentinel.Deny().WithConfidence(0.95)
 Add a reason code.
 
 ```go
-sentinel.Deny().WithReasonCode("IP_BLOCKED")
+zentinel.Deny().WithReasonCode("IP_BLOCKED")
 ```
 
 #### `WithMetadata(key string, value interface{})`
@@ -330,7 +330,7 @@ sentinel.Deny().WithReasonCode("IP_BLOCKED")
 Add custom audit metadata.
 
 ```go
-sentinel.Deny().WithMetadata("blocked_ip", "192.168.1.100")
+zentinel.Deny().WithMetadata("blocked_ip", "192.168.1.100")
 ```
 
 ### Advanced Methods
@@ -340,7 +340,7 @@ sentinel.Deny().WithMetadata("blocked_ip", "192.168.1.100")
 Indicate that more data is needed before deciding.
 
 ```go
-sentinel.Allow().NeedsMoreData()
+zentinel.Allow().NeedsMoreData()
 ```
 
 #### `WithRoutingMetadata(key, value string)`
@@ -348,7 +348,7 @@ sentinel.Allow().NeedsMoreData()
 Add routing metadata for upstream selection.
 
 ```go
-sentinel.Allow().WithRoutingMetadata("upstream", "backend-v2")
+zentinel.Allow().WithRoutingMetadata("upstream", "backend-v2")
 ```
 
 #### `WithRequestBodyMutation(data []byte, chunkIndex int)`
@@ -356,7 +356,7 @@ sentinel.Allow().WithRoutingMetadata("upstream", "backend-v2")
 Set a mutation for the request body.
 
 ```go
-sentinel.Allow().WithRequestBodyMutation([]byte("modified body"), 0)
+zentinel.Allow().WithRequestBodyMutation([]byte("modified body"), 0)
 ```
 
 #### `WithResponseBodyMutation(data []byte, chunkIndex int)`
@@ -364,7 +364,7 @@ sentinel.Allow().WithRequestBodyMutation([]byte("modified body"), 0)
 Set a mutation for the response body.
 
 ```go
-sentinel.Allow().WithResponseBodyMutation([]byte("modified body"), 0)
+zentinel.Allow().WithResponseBodyMutation([]byte("modified body"), 0)
 ```
 
 ---
@@ -374,7 +374,7 @@ sentinel.Allow().WithResponseBodyMutation([]byte("modified body"), 0)
 Represents an incoming HTTP request.
 
 ```go
-import sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+import zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 ```
 
 ### Methods
@@ -541,7 +541,7 @@ request.IsMultipart() // Content-Type is multipart
 Represents an HTTP response from the upstream.
 
 ```go
-import sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+import zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 ```
 
 ### Methods
@@ -612,13 +612,13 @@ response.BodyJSON(dest interface{})
 Runner for starting and managing an agent.
 
 ```go
-import sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+import zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 ```
 
 ### Usage
 
 ```go
-runner := sentinel.NewAgentRunner(&MyAgent{}).
+runner := zentinel.NewAgentRunner(&MyAgent{}).
     WithSocket("/tmp/my-agent.sock").
     WithLogLevel("debug")
 
@@ -652,10 +652,10 @@ Set the log level (debug, info, warn, error).
 Convenience function to run an agent with CLI argument parsing.
 
 ```go
-import sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+import zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 
 func main() {
-    sentinel.RunAgent(&MyAgent{})
+    zentinel.RunAgent(&MyAgent{})
 }
 ```
 

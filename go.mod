@@ -1,4 +1,4 @@
-module github.com/raskell-io/sentinel-agent-go-sdk
+module github.com/zentinelproxy/zentinel-agent-go-sdk
 
 go 1.22
 

@@ -1,4 +1,4 @@
-// Simple Sentinel agent example.
+// Simple Zentinel agent example.
 //
 // This example demonstrates a basic agent that:
 // - Blocks requests to /admin paths
@@ -10,12 +10,12 @@ import (
 	"context"
 	"fmt"
 
-	sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+	zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
 // SimpleAgent is a simple example agent that blocks admin paths.
 type SimpleAgent struct {
-	sentinel.BaseAgent
+	zentinel.BaseAgent
 }
 
 // Name returns the agent name.
@@ -24,10 +24,10 @@ func (a *SimpleAgent) Name() string {
 }
 
 // OnRequest processes incoming requests.
-func (a *SimpleAgent) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *SimpleAgent) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
 	// Block admin paths
 	if request.PathStartsWith("/admin") {
-		return sentinel.Deny().
+		return zentinel.Deny().
 			WithBody("Access denied").
 			WithTag("security").
 			WithRuleID("ADMIN_BLOCKED")
@@ -35,27 +35,27 @@ func (a *SimpleAgent) OnRequest(ctx context.Context, request *sentinel.Request) 
 
 	// Block requests without User-Agent
 	if request.UserAgent() == "" {
-		return sentinel.Block(400).
+		return zentinel.Block(400).
 			WithBody("User-Agent header required").
 			WithTag("validation")
 	}
 
 	// Allow with custom header
-	return sentinel.Allow().AddRequestHeader("X-Agent-Processed", "true")
+	return zentinel.Allow().AddRequestHeader("X-Agent-Processed", "true")
 }
 
 // OnResponse processes responses.
-func (a *SimpleAgent) OnResponse(ctx context.Context, request *sentinel.Request, response *sentinel.Response) *sentinel.Decision {
+func (a *SimpleAgent) OnResponse(ctx context.Context, request *zentinel.Request, response *zentinel.Response) *zentinel.Decision {
 	// Add timing header
-	return sentinel.Allow().AddResponseHeader("X-Processed-By", a.Name())
+	return zentinel.Allow().AddResponseHeader("X-Processed-By", a.Name())
 }
 
 // OnRequestComplete logs completed requests.
-func (a *SimpleAgent) OnRequestComplete(ctx context.Context, request *sentinel.Request, status int, durationMS int) {
+func (a *SimpleAgent) OnRequestComplete(ctx context.Context, request *zentinel.Request, status int, durationMS int) {
 	fmt.Printf("Request completed: %s %s -> %d (%dms)\n",
 		request.Method(), request.Path(), status, durationMS)
 }
 
 func main() {
-	sentinel.RunAgent(&SimpleAgent{})
+	zentinel.RunAgent(&SimpleAgent{})
 }

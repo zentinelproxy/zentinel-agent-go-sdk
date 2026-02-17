@@ -1,4 +1,4 @@
-// Simple Sentinel v2 agent example.
+// Simple Zentinel v2 agent example.
 //
 // This example demonstrates a basic v2 agent that:
 // - Declares capabilities for request headers and response headers
@@ -22,8 +22,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
-	"github.com/raskell-io/sentinel-agent-go-sdk/v2"
+	zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+	"github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 )
 
 // SimpleAgentV2 is a simple v2 agent that blocks admin paths.
@@ -55,12 +55,12 @@ func (a *SimpleAgentV2) Name() string {
 }
 
 // OnRequest processes incoming requests.
-func (a *SimpleAgentV2) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *SimpleAgentV2) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
 	a.requestCount.Add(1)
 
 	// Block admin paths
 	if request.PathStartsWith("/admin") {
-		return sentinel.Deny().
+		return zentinel.Deny().
 			WithBody("Access denied").
 			WithTag("security").
 			WithRuleID("ADMIN_BLOCKED")
@@ -68,27 +68,27 @@ func (a *SimpleAgentV2) OnRequest(ctx context.Context, request *sentinel.Request
 
 	// Block requests without User-Agent
 	if request.UserAgent() == "" {
-		return sentinel.Block(400).
+		return zentinel.Block(400).
 			WithBody("User-Agent header required").
 			WithTag("validation")
 	}
 
 	// Allow with custom header
-	return sentinel.Allow().
+	return zentinel.Allow().
 		AddRequestHeader("X-Agent-Processed", "true").
 		AddRequestHeader("X-Agent-Version", "v2")
 }
 
 // OnResponse processes responses.
-func (a *SimpleAgentV2) OnResponse(ctx context.Context, request *sentinel.Request, response *sentinel.Response) *sentinel.Decision {
+func (a *SimpleAgentV2) OnResponse(ctx context.Context, request *zentinel.Request, response *zentinel.Response) *zentinel.Decision {
 	// Add security headers to HTML responses
 	if response.IsHTML() {
-		return sentinel.Allow().
+		return zentinel.Allow().
 			AddResponseHeader("X-Content-Type-Options", "nosniff").
 			AddResponseHeader("X-Frame-Options", "DENY")
 	}
 
-	return sentinel.Allow().
+	return zentinel.Allow().
 		AddResponseHeader("X-Processed-By", a.Name())
 }
 

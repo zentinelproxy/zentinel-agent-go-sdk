@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+	zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 	"github.com/rs/zerolog/log"
 )
 
@@ -16,7 +16,7 @@ type AgentHandlerV2 struct {
 	agent AgentV2
 
 	// Request state tracking
-	requests       map[uint64]*sentinel.Request
+	requests       map[uint64]*zentinel.Request
 	requestBodies  map[uint64][]byte
 	responseBodies map[uint64][]byte
 	responseEvents map[uint64]*V2ResponseHeaders
@@ -34,7 +34,7 @@ type AgentHandlerV2 struct {
 func NewAgentHandlerV2(agent AgentV2) *AgentHandlerV2 {
 	return &AgentHandlerV2{
 		agent:          agent,
-		requests:       make(map[uint64]*sentinel.Request),
+		requests:       make(map[uint64]*zentinel.Request),
 		requestBodies:  make(map[uint64][]byte),
 		responseBodies: make(map[uint64][]byte),
 		responseEvents: make(map[uint64]*V2ResponseHeaders),
@@ -118,8 +118,8 @@ func (h *AgentHandlerV2) handleRequestHeaders(ctx context.Context, msg *V2Messag
 	}()
 
 	// Convert to v1 format for agent interface compatibility
-	event := &sentinel.RequestHeadersEvent{
-		Metadata: sentinel.RequestMetadata{
+	event := &zentinel.RequestHeadersEvent{
+		Metadata: zentinel.RequestMetadata{
 			CorrelationID: headers.Metadata.CorrelationID,
 			RequestID:     headers.Metadata.CorrelationID,
 			ClientIP:      headers.Metadata.ClientIP,
@@ -136,7 +136,7 @@ func (h *AgentHandlerV2) handleRequestHeaders(ctx context.Context, msg *V2Messag
 		Headers: headers.Headers,
 	}
 
-	request := sentinel.NewRequest(event, nil)
+	request := zentinel.NewRequest(event, nil)
 
 	// Cache request for response correlation
 	h.mu.Lock()
@@ -203,13 +203,13 @@ func (h *AgentHandlerV2) handleResponseHeaders(ctx context.Context, msg *V2Messa
 	}
 
 	// Convert to v1 format
-	event := &sentinel.ResponseHeadersEvent{
+	event := &zentinel.ResponseHeadersEvent{
 		CorrelationID: request.CorrelationID(),
 		Status:        int(headers.StatusCode),
 		Headers:       headers.Headers,
 	}
 
-	response := sentinel.NewResponse(event, nil)
+	response := zentinel.NewResponse(event, nil)
 
 	// Cache response event for body processing
 	h.mu.Lock()
@@ -244,12 +244,12 @@ func (h *AgentHandlerV2) handleResponseBodyChunk(ctx context.Context, msg *V2Mes
 
 	// Only call handler on last chunk
 	if chunk.IsLast && request != nil && responseEvent != nil {
-		event := &sentinel.ResponseHeadersEvent{
+		event := &zentinel.ResponseHeadersEvent{
 			CorrelationID: request.CorrelationID(),
 			Status:        int(responseEvent.StatusCode),
 			Headers:       responseEvent.Headers,
 		}
-		response := sentinel.NewResponse(event, body)
+		response := zentinel.NewResponse(event, body)
 
 		decision := h.agent.OnResponseBody(ctx, request, response)
 		return h.buildDecisionMessage(chunk.RequestID, decision)
@@ -304,7 +304,7 @@ func (h *AgentHandlerV2) handleCancelAll(ctx context.Context, msg *V2Message) (*
 
 	// Cleanup all cached state
 	h.mu.Lock()
-	h.requests = make(map[uint64]*sentinel.Request)
+	h.requests = make(map[uint64]*zentinel.Request)
 	h.requestBodies = make(map[uint64][]byte)
 	h.responseBodies = make(map[uint64][]byte)
 	h.responseEvents = make(map[uint64]*V2ResponseHeaders)
@@ -334,7 +334,7 @@ func (h *AgentHandlerV2) handleMetricsRequest(ctx context.Context, msg *V2Messag
 	return NewV2Message(MsgTypeMetricsResponse, metrics)
 }
 
-func (h *AgentHandlerV2) buildDecisionMessage(requestID uint64, decision *sentinel.Decision) (*V2Message, error) {
+func (h *AgentHandlerV2) buildDecisionMessage(requestID uint64, decision *zentinel.Decision) (*V2Message, error) {
 	response := decision.Build()
 
 	v2Decision := V2Decision{
@@ -426,22 +426,22 @@ func (h *AgentHandlerV2) HandleLegacyEvent(ctx context.Context, event map[string
 	eventType, _ := event["event_type"].(string)
 	payload, _ := event["payload"].(map[string]interface{})
 
-	switch sentinel.EventType(eventType) {
-	case sentinel.EventTypeConfigure:
+	switch zentinel.EventType(eventType) {
+	case zentinel.EventTypeConfigure:
 		return h.handleLegacyConfigure(ctx, payload)
-	case sentinel.EventTypeRequestHeaders:
+	case zentinel.EventTypeRequestHeaders:
 		return h.handleLegacyRequestHeaders(ctx, payload)
-	case sentinel.EventTypeRequestBodyChunk:
+	case zentinel.EventTypeRequestBodyChunk:
 		return h.handleLegacyRequestBodyChunk(ctx, payload)
-	case sentinel.EventTypeResponseHeaders:
+	case zentinel.EventTypeResponseHeaders:
 		return h.handleLegacyResponseHeaders(ctx, payload)
-	case sentinel.EventTypeResponseBodyChunk:
+	case zentinel.EventTypeResponseBodyChunk:
 		return h.handleLegacyResponseBodyChunk(ctx, payload)
-	case sentinel.EventTypeRequestComplete:
+	case zentinel.EventTypeRequestComplete:
 		return h.handleLegacyRequestComplete(ctx, payload)
 	default:
 		log.Warn().Str("event_type", eventType).Msg("Unknown legacy event type")
-		return sentinel.Allow().Build(), nil
+		return zentinel.Allow().Build(), nil
 	}
 }
 
@@ -455,12 +455,12 @@ func (h *AgentHandlerV2) handleLegacyConfigure(ctx context.Context, payload map[
 
 func (h *AgentHandlerV2) handleLegacyRequestHeaders(ctx context.Context, payload map[string]interface{}) (interface{}, error) {
 	jsonBytes, _ := json.Marshal(payload)
-	var event sentinel.RequestHeadersEvent
+	var event zentinel.RequestHeadersEvent
 	if err := json.Unmarshal(jsonBytes, &event); err != nil {
-		return sentinel.Allow().Build(), nil
+		return zentinel.Allow().Build(), nil
 	}
 
-	request := sentinel.NewRequest(&event, nil)
+	request := zentinel.NewRequest(&event, nil)
 	correlationID := event.Metadata.CorrelationID
 
 	// Use correlation ID hash as request ID for legacy compatibility
@@ -477,9 +477,9 @@ func (h *AgentHandlerV2) handleLegacyRequestHeaders(ctx context.Context, payload
 
 func (h *AgentHandlerV2) handleLegacyRequestBodyChunk(ctx context.Context, payload map[string]interface{}) (interface{}, error) {
 	jsonBytes, _ := json.Marshal(payload)
-	var event sentinel.RequestBodyChunkEvent
+	var event zentinel.RequestBodyChunkEvent
 	if err := json.Unmarshal(jsonBytes, &event); err != nil {
-		return sentinel.Allow().Build(), nil
+		return zentinel.Allow().Build(), nil
 	}
 
 	requestID := hashString(event.CorrelationID)
@@ -497,14 +497,14 @@ func (h *AgentHandlerV2) handleLegacyRequestBodyChunk(ctx context.Context, paylo
 		return decision.Build(), nil
 	}
 
-	return sentinel.Allow().NeedsMoreData().Build(), nil
+	return zentinel.Allow().NeedsMoreData().Build(), nil
 }
 
 func (h *AgentHandlerV2) handleLegacyResponseHeaders(ctx context.Context, payload map[string]interface{}) (interface{}, error) {
 	jsonBytes, _ := json.Marshal(payload)
-	var event sentinel.ResponseHeadersEvent
+	var event zentinel.ResponseHeadersEvent
 	if err := json.Unmarshal(jsonBytes, &event); err != nil {
-		return sentinel.Allow().Build(), nil
+		return zentinel.Allow().Build(), nil
 	}
 
 	requestID := hashString(event.CorrelationID)
@@ -514,10 +514,10 @@ func (h *AgentHandlerV2) handleLegacyResponseHeaders(ctx context.Context, payloa
 	h.mu.RUnlock()
 
 	if request == nil {
-		return sentinel.Allow().Build(), nil
+		return zentinel.Allow().Build(), nil
 	}
 
-	response := sentinel.NewResponse(&event, nil)
+	response := zentinel.NewResponse(&event, nil)
 
 	h.mu.Lock()
 	h.responseEvents[requestID] = &V2ResponseHeaders{
@@ -534,9 +534,9 @@ func (h *AgentHandlerV2) handleLegacyResponseHeaders(ctx context.Context, payloa
 
 func (h *AgentHandlerV2) handleLegacyResponseBodyChunk(ctx context.Context, payload map[string]interface{}) (interface{}, error) {
 	jsonBytes, _ := json.Marshal(payload)
-	var event sentinel.ResponseBodyChunkEvent
+	var event zentinel.ResponseBodyChunkEvent
 	if err := json.Unmarshal(jsonBytes, &event); err != nil {
-		return sentinel.Allow().Build(), nil
+		return zentinel.Allow().Build(), nil
 	}
 
 	requestID := hashString(event.CorrelationID)
@@ -550,22 +550,22 @@ func (h *AgentHandlerV2) handleLegacyResponseBodyChunk(ctx context.Context, payl
 	h.mu.Unlock()
 
 	if event.IsLast && request != nil && responseEvent != nil {
-		sentinelEvent := &sentinel.ResponseHeadersEvent{
+		zentinelEvent := &zentinel.ResponseHeadersEvent{
 			CorrelationID: request.CorrelationID(),
 			Status:        int(responseEvent.StatusCode),
 			Headers:       responseEvent.Headers,
 		}
-		response := sentinel.NewResponse(sentinelEvent, body)
+		response := zentinel.NewResponse(zentinelEvent, body)
 		decision := h.agent.OnResponseBody(ctx, request, response)
 		return decision.Build(), nil
 	}
 
-	return sentinel.Allow().NeedsMoreData().Build(), nil
+	return zentinel.Allow().NeedsMoreData().Build(), nil
 }
 
 func (h *AgentHandlerV2) handleLegacyRequestComplete(ctx context.Context, payload map[string]interface{}) (interface{}, error) {
 	jsonBytes, _ := json.Marshal(payload)
-	var event sentinel.RequestCompleteEvent
+	var event zentinel.RequestCompleteEvent
 	if err := json.Unmarshal(jsonBytes, &event); err != nil {
 		return map[string]interface{}{"success": true}, nil
 	}

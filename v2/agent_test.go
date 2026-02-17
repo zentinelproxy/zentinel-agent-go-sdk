@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+	zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
 // TestAgentV2Impl is a test agent implementing AgentV2.
@@ -28,12 +28,12 @@ func (a *TestAgentV2Impl) Capabilities() *AgentCapabilities {
 		WithMaxConcurrentRequests(100)
 }
 
-func (a *TestAgentV2Impl) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *TestAgentV2Impl) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
 	a.onRequestCalled = true
 	if request.PathStartsWith("/blocked") {
-		return sentinel.Deny().WithBody("Blocked by v2 agent")
+		return zentinel.Deny().WithBody("Blocked by v2 agent")
 	}
-	return sentinel.Allow()
+	return zentinel.Allow()
 }
 
 func (a *TestAgentV2Impl) OnShutdown(ctx context.Context) {
@@ -89,8 +89,8 @@ func TestTestAgentV2_OnRequest(t *testing.T) {
 	ctx := context.Background()
 
 	// Test blocked path
-	event := &sentinel.RequestHeadersEvent{
-		Metadata: sentinel.RequestMetadata{
+	event := &zentinel.RequestHeadersEvent{
+		Metadata: zentinel.RequestMetadata{
 			CorrelationID: "test",
 			RequestID:     "req",
 			ClientIP:      "127.0.0.1",
@@ -100,7 +100,7 @@ func TestTestAgentV2_OnRequest(t *testing.T) {
 		URI:     "/blocked/resource",
 		Headers: map[string][]string{},
 	}
-	request := sentinel.NewRequest(event, nil)
+	request := zentinel.NewRequest(event, nil)
 
 	decision := agent.OnRequest(ctx, request)
 	response := decision.Build()
@@ -120,8 +120,8 @@ func TestTestAgentV2_OnRequest(t *testing.T) {
 	}
 
 	// Test allowed path
-	event2 := &sentinel.RequestHeadersEvent{
-		Metadata: sentinel.RequestMetadata{
+	event2 := &zentinel.RequestHeadersEvent{
+		Metadata: zentinel.RequestMetadata{
 			CorrelationID: "test2",
 			RequestID:     "req2",
 			ClientIP:      "127.0.0.1",
@@ -131,7 +131,7 @@ func TestTestAgentV2_OnRequest(t *testing.T) {
 		URI:     "/allowed",
 		Headers: map[string][]string{},
 	}
-	request2 := sentinel.NewRequest(event2, nil)
+	request2 := zentinel.NewRequest(event2, nil)
 
 	decision2 := agent.OnRequest(ctx, request2)
 	response2 := decision2.Build()

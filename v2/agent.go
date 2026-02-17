@@ -3,7 +3,7 @@ package v2
 import (
 	"context"
 
-	sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+	zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
 // AgentV2 extends the base Agent interface with v2 protocol features.
@@ -25,12 +25,12 @@ import (
 //	        HandleRequestBody()
 //	}
 //
-//	func (a *MyAgent) OnRequest(ctx context.Context, req *sentinel.Request) *sentinel.Decision {
+//	func (a *MyAgent) OnRequest(ctx context.Context, req *zentinel.Request) *zentinel.Decision {
 //	    // Your logic here
-//	    return sentinel.Allow()
+//	    return zentinel.Allow()
 //	}
 type AgentV2 interface {
-	sentinel.Agent
+	zentinel.Agent
 
 	// Capabilities returns the agent's processing capabilities.
 	// Called during handshake to negotiate features with the proxy.
@@ -72,12 +72,12 @@ type AgentV2 interface {
 //
 //	func (a *MyAgent) Name() string { return "my-agent" }
 //
-//	func (a *MyAgent) OnRequest(ctx context.Context, req *sentinel.Request) *sentinel.Decision {
+//	func (a *MyAgent) OnRequest(ctx context.Context, req *zentinel.Request) *zentinel.Decision {
 //	    // Your custom logic here
-//	    return sentinel.Allow()
+//	    return zentinel.Allow()
 //	}
 type BaseAgentV2 struct {
-	sentinel.BaseAgent
+	zentinel.BaseAgent
 	caps    *AgentCapabilities
 	metrics *MetricsCollector
 }
@@ -164,12 +164,12 @@ func (a *BaseAgentV2) SetCapabilities(caps *AgentCapabilities) {
 //	}
 type ConfigurableAgentV2[T any] interface {
 	AgentV2
-	sentinel.ConfigurableAgent[T]
+	zentinel.ConfigurableAgent[T]
 }
 
 // ConfigurableAgentV2Base provides a base implementation for ConfigurableAgentV2.
 type ConfigurableAgentV2Base[T any] struct {
-	*sentinel.ConfigurableAgentBase[T]
+	*zentinel.ConfigurableAgentBase[T]
 	caps    *AgentCapabilities
 	metrics *MetricsCollector
 }
@@ -177,7 +177,7 @@ type ConfigurableAgentV2Base[T any] struct {
 // NewConfigurableAgentV2 creates a new ConfigurableAgentV2Base with default config.
 func NewConfigurableAgentV2[T any](defaultConfig T) *ConfigurableAgentV2Base[T] {
 	return &ConfigurableAgentV2Base[T]{
-		ConfigurableAgentBase: sentinel.NewConfigurableAgent(defaultConfig),
+		ConfigurableAgentBase: zentinel.NewConfigurableAgent(defaultConfig),
 		caps:                  NewAgentCapabilities(),
 		metrics:               NewMetricsCollector(),
 	}

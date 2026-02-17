@@ -1,6 +1,6 @@
 # Examples
 
-Common patterns and use cases for Sentinel agents.
+Common patterns and use cases for Zentinel agents.
 
 ## Basic Request Blocking
 
@@ -12,11 +12,11 @@ package main
 import (
     "context"
 
-    sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+    zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
 type BlockingAgent struct {
-    sentinel.BaseAgent
+    zentinel.BaseAgent
     blockedPaths []string
 }
 
@@ -30,19 +30,19 @@ func (a *BlockingAgent) Name() string {
     return "blocking-agent"
 }
 
-func (a *BlockingAgent) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *BlockingAgent) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
     for _, blocked := range a.blockedPaths {
         if request.PathStartsWith(blocked) {
-            return sentinel.Deny().
+            return zentinel.Deny().
                 WithBody("Not Found").
                 WithTag("path-blocked")
         }
     }
-    return sentinel.Allow()
+    return zentinel.Allow()
 }
 
 func main() {
-    sentinel.RunAgent(NewBlockingAgent())
+    zentinel.RunAgent(NewBlockingAgent())
 }
 ```
 
@@ -56,11 +56,11 @@ package main
 import (
     "context"
 
-    sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+    zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
 type IPFilterAgent struct {
-    sentinel.BaseAgent
+    zentinel.BaseAgent
     allowedIPs map[string]bool
 }
 
@@ -78,20 +78,20 @@ func (a *IPFilterAgent) Name() string {
     return "ip-filter"
 }
 
-func (a *IPFilterAgent) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *IPFilterAgent) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
     clientIP := request.ClientIP()
 
     if a.allowedIPs[clientIP] {
-        return sentinel.Allow()
+        return zentinel.Allow()
     }
 
-    return sentinel.Deny().
+    return zentinel.Deny().
         WithTag("ip-blocked").
         WithMetadata("blocked_ip", clientIP)
 }
 
 func main() {
-    sentinel.RunAgent(NewIPFilterAgent())
+    zentinel.RunAgent(NewIPFilterAgent())
 }
 ```
 
@@ -107,11 +107,11 @@ import (
     "strings"
 
     "github.com/golang-jwt/jwt/v5"
-    sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+    zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
 type AuthAgent struct {
-    sentinel.BaseAgent
+    zentinel.BaseAgent
     secret []byte
 }
 
@@ -123,15 +123,15 @@ func (a *AuthAgent) Name() string {
     return "auth-agent"
 }
 
-func (a *AuthAgent) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *AuthAgent) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
     // Skip auth for public paths
     if request.PathStartsWith("/public") {
-        return sentinel.Allow()
+        return zentinel.Allow()
     }
 
     auth := request.Authorization()
     if !strings.HasPrefix(auth, "Bearer ") {
-        return sentinel.Unauthorized().
+        return zentinel.Unauthorized().
             WithBody("Missing or invalid Authorization header").
             WithTag("auth-missing")
     }
@@ -143,7 +143,7 @@ func (a *AuthAgent) OnRequest(ctx context.Context, request *sentinel.Request) *s
     })
 
     if err != nil {
-        return sentinel.Unauthorized().
+        return zentinel.Unauthorized().
             WithBody("Invalid token").
             WithTag("auth-invalid")
     }
@@ -151,18 +151,18 @@ func (a *AuthAgent) OnRequest(ctx context.Context, request *sentinel.Request) *s
     if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
         userID, _ := claims["sub"].(string)
         role, _ := claims["role"].(string)
-        return sentinel.Allow().
+        return zentinel.Allow().
             AddRequestHeader("X-User-ID", userID).
             AddRequestHeader("X-User-Role", role)
     }
 
-    return sentinel.Unauthorized().
+    return zentinel.Unauthorized().
         WithBody("Invalid token claims").
         WithTag("auth-invalid")
 }
 
 func main() {
-    sentinel.RunAgent(NewAuthAgent("your-secret-key"))
+    zentinel.RunAgent(NewAuthAgent("your-secret-key"))
 }
 ```
 
@@ -179,11 +179,11 @@ import (
     "sync"
     "time"
 
-    sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+    zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
 type RateLimitAgent struct {
-    sentinel.BaseAgent
+    zentinel.BaseAgent
     maxRequests   int
     windowSeconds int
     requests      map[string][]time.Time
@@ -202,7 +202,7 @@ func (a *RateLimitAgent) Name() string {
     return "rate-limit"
 }
 
-func (a *RateLimitAgent) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *RateLimitAgent) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
     key := request.ClientIP()
     now := time.Now()
     windowStart := now.Add(-time.Duration(a.windowSeconds) * time.Second)
@@ -221,20 +221,20 @@ func (a *RateLimitAgent) OnRequest(ctx context.Context, request *sentinel.Reques
     a.requests[key] = timestamps
 
     if len(timestamps) > a.maxRequests {
-        return sentinel.RateLimited().
+        return zentinel.RateLimited().
             WithBody("Too many requests").
             WithTag("rate-limited").
             AddResponseHeader("Retry-After", strconv.Itoa(a.windowSeconds))
     }
 
     remaining := a.maxRequests - len(timestamps)
-    return sentinel.Allow().
+    return zentinel.Allow().
         AddResponseHeader("X-RateLimit-Limit", strconv.Itoa(a.maxRequests)).
         AddResponseHeader("X-RateLimit-Remaining", strconv.Itoa(remaining))
 }
 
 func main() {
-    sentinel.RunAgent(NewRateLimitAgent())
+    zentinel.RunAgent(NewRateLimitAgent())
 }
 ```
 
@@ -248,28 +248,28 @@ package main
 import (
     "context"
 
-    sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+    zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
 type HeaderAgent struct {
-    sentinel.BaseAgent
+    zentinel.BaseAgent
 }
 
 func (a *HeaderAgent) Name() string {
     return "header-agent"
 }
 
-func (a *HeaderAgent) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
-    return sentinel.Allow().
+func (a *HeaderAgent) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
+    return zentinel.Allow().
         // Add headers for upstream
-        AddRequestHeader("X-Forwarded-By", "sentinel").
+        AddRequestHeader("X-Forwarded-By", "zentinel").
         AddRequestHeader("X-Request-ID", request.CorrelationID()).
         // Remove sensitive headers
         RemoveRequestHeader("X-Internal-Token")
 }
 
-func (a *HeaderAgent) OnResponse(ctx context.Context, request *sentinel.Request, response *sentinel.Response) *sentinel.Decision {
-    return sentinel.Allow().
+func (a *HeaderAgent) OnResponse(ctx context.Context, request *zentinel.Request, response *zentinel.Response) *zentinel.Decision {
+    return zentinel.Allow().
         // Add security headers
         AddResponseHeader("X-Frame-Options", "DENY").
         AddResponseHeader("X-Content-Type-Options", "nosniff").
@@ -280,7 +280,7 @@ func (a *HeaderAgent) OnResponse(ctx context.Context, request *sentinel.Request,
 }
 
 func main() {
-    sentinel.RunAgent(&HeaderAgent{})
+    zentinel.RunAgent(&HeaderAgent{})
 }
 ```
 
@@ -295,7 +295,7 @@ import (
     "context"
     "fmt"
 
-    sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+    zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
 type Config struct {
@@ -305,12 +305,12 @@ type Config struct {
 }
 
 type ConfigurableBlocker struct {
-    *sentinel.ConfigurableAgentBase[Config]
+    *zentinel.ConfigurableAgentBase[Config]
 }
 
 func NewConfigurableBlocker() *ConfigurableBlocker {
     return &ConfigurableBlocker{
-        ConfigurableAgentBase: sentinel.NewConfigurableAgent(Config{
+        ConfigurableAgentBase: zentinel.NewConfigurableAgent(Config{
             Enabled:      true,
             BlockedPaths: []string{"/admin"},
             LogRequests:  false,
@@ -330,11 +330,11 @@ func (a *ConfigurableBlocker) OnConfigure(ctx context.Context, config map[string
     return nil
 }
 
-func (a *ConfigurableBlocker) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *ConfigurableBlocker) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
     cfg := a.Config()
 
     if !cfg.Enabled {
-        return sentinel.Allow()
+        return zentinel.Allow()
     }
 
     if cfg.LogRequests {
@@ -343,15 +343,15 @@ func (a *ConfigurableBlocker) OnRequest(ctx context.Context, request *sentinel.R
 
     for _, blocked := range cfg.BlockedPaths {
         if request.PathStartsWith(blocked) {
-            return sentinel.Deny()
+            return zentinel.Deny()
         }
     }
 
-    return sentinel.Allow()
+    return zentinel.Allow()
 }
 
 func main() {
-    sentinel.RunAgent(NewConfigurableBlocker())
+    zentinel.RunAgent(NewConfigurableBlocker())
 }
 ```
 
@@ -366,25 +366,25 @@ import (
     "context"
     "fmt"
 
-    sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+    zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
 type LoggingAgent struct {
-    sentinel.BaseAgent
+    zentinel.BaseAgent
 }
 
 func (a *LoggingAgent) Name() string {
     return "logging-agent"
 }
 
-func (a *LoggingAgent) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
-    return sentinel.Allow().
+func (a *LoggingAgent) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
+    return zentinel.Allow().
         WithTag("method:" + request.Method()).
         WithMetadata("path", request.Path()).
         WithMetadata("client_ip", request.ClientIP())
 }
 
-func (a *LoggingAgent) OnRequestComplete(ctx context.Context, request *sentinel.Request, status int, durationMS int) {
+func (a *LoggingAgent) OnRequestComplete(ctx context.Context, request *zentinel.Request, status int, durationMS int) {
     fmt.Printf("%s - %s %s -> %d (%dms)\n",
         request.ClientIP(),
         request.Method(),
@@ -395,7 +395,7 @@ func (a *LoggingAgent) OnRequestComplete(ctx context.Context, request *sentinel.
 }
 
 func main() {
-    sentinel.RunAgent(&LoggingAgent{})
+    zentinel.RunAgent(&LoggingAgent{})
 }
 ```
 
@@ -410,11 +410,11 @@ import (
     "context"
     "strings"
 
-    sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+    zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
 type ContentTypeAgent struct {
-    sentinel.BaseAgent
+    zentinel.BaseAgent
     allowedTypes map[string]bool
 }
 
@@ -432,16 +432,16 @@ func (a *ContentTypeAgent) Name() string {
     return "content-type-validator"
 }
 
-func (a *ContentTypeAgent) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *ContentTypeAgent) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
     // Only check methods with body
     method := request.Method()
     if method != "POST" && method != "PUT" && method != "PATCH" {
-        return sentinel.Allow()
+        return zentinel.Allow()
     }
 
     contentType := request.ContentType()
     if contentType == "" {
-        return sentinel.Block(400).
+        return zentinel.Block(400).
             WithBody("Content-Type header required")
     }
 
@@ -450,16 +450,16 @@ func (a *ContentTypeAgent) OnRequest(ctx context.Context, request *sentinel.Requ
     baseType = strings.TrimSpace(baseType)
 
     if !a.allowedTypes[baseType] {
-        return sentinel.Block(415).
+        return zentinel.Block(415).
             WithBody("Unsupported Content-Type: " + baseType).
             WithTag("invalid-content-type")
     }
 
-    return sentinel.Allow()
+    return zentinel.Allow()
 }
 
 func main() {
-    sentinel.RunAgent(NewContentTypeAgent())
+    zentinel.RunAgent(NewContentTypeAgent())
 }
 ```
 
@@ -473,11 +473,11 @@ package main
 import (
     "context"
 
-    sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+    zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
 type RedirectAgent struct {
-    sentinel.BaseAgent
+    zentinel.BaseAgent
     redirects map[string]string
 }
 
@@ -495,23 +495,23 @@ func (a *RedirectAgent) Name() string {
     return "redirect-agent"
 }
 
-func (a *RedirectAgent) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *RedirectAgent) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
     if target, ok := a.redirects[request.Path()]; ok {
-        return sentinel.Redirect(target, 302)
+        return zentinel.Redirect(target, 302)
     }
 
     // Redirect HTTP to HTTPS
     proto := request.Header("x-forwarded-proto")
     if proto == "http" {
         httpsURL := "https://" + request.Host() + request.URI()
-        return sentinel.RedirectPermanent(httpsURL)
+        return zentinel.RedirectPermanent(httpsURL)
     }
 
-    return sentinel.Allow()
+    return zentinel.Allow()
 }
 
 func main() {
-    sentinel.RunAgent(NewRedirectAgent())
+    zentinel.RunAgent(NewRedirectAgent())
 }
 ```
 
@@ -526,11 +526,11 @@ import (
     "context"
     "strings"
 
-    sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+    zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
 type SecurityAgent struct {
-    sentinel.BaseAgent
+    zentinel.BaseAgent
     suspiciousPatterns []string
 }
 
@@ -544,17 +544,17 @@ func (a *SecurityAgent) Name() string {
     return "security-agent"
 }
 
-func (a *SecurityAgent) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *SecurityAgent) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
     // Check 1: User-Agent required
     if request.UserAgent() == "" {
-        return sentinel.Block(400).WithBody("User-Agent required")
+        return zentinel.Block(400).WithBody("User-Agent required")
     }
 
     // Check 2: Block suspicious paths
     pathLower := strings.ToLower(request.Path())
     for _, pattern := range a.suspiciousPatterns {
         if strings.Contains(pathLower, pattern) {
-            return sentinel.Deny().
+            return zentinel.Deny().
                 WithTag("path-traversal").
                 WithRuleID("SEC-001")
         }
@@ -564,17 +564,17 @@ func (a *SecurityAgent) OnRequest(ctx context.Context, request *sentinel.Request
     method := request.Method()
     if method == "POST" || method == "PUT" {
         if !request.HasHeader("content-length") {
-            return sentinel.Block(411).WithBody("Content-Length required")
+            return zentinel.Block(411).WithBody("Content-Length required")
         }
     }
 
     // All checks passed
-    return sentinel.Allow().
+    return zentinel.Allow().
         WithTag("security-passed").
         AddResponseHeader("X-Security-Check", "passed")
 }
 
 func main() {
-    sentinel.RunAgent(NewSecurityAgent())
+    zentinel.RunAgent(NewSecurityAgent())
 }
 ```

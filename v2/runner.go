@@ -78,7 +78,7 @@ func DefaultRunnerConfigV2() RunnerConfigV2 {
 	return RunnerConfigV2{
 		Name:                     "agent",
 		Transport:                TransportUDS,
-		SocketPath:               "/tmp/sentinel-agent.sock",
+		SocketPath:               "/tmp/zentinel-agent.sock",
 		GRPCAddress:              "localhost:50051",
 		ReverseAddress:           "",
 		TLSConfig:                nil,

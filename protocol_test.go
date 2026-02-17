@@ -1,4 +1,4 @@
-package sentinel
+package zentinel
 
 import (
 	"bytes"
@@ -256,7 +256,7 @@ func TestAgentResponseSerialization_Version(t *testing.T) {
 
 func TestAgentResponseSerialization_WithHeaderOps(t *testing.T) {
 	response := Allow().
-		AddRequestHeader("X-Forwarded-By", "sentinel").
+		AddRequestHeader("X-Forwarded-By", "zentinel").
 		RemoveRequestHeader("X-Internal").
 		AddResponseHeader("X-Cache", "HIT").
 		Build()
@@ -282,8 +282,8 @@ func TestAgentResponseSerialization_WithHeaderOps(t *testing.T) {
 	if setOp["name"] != "X-Forwarded-By" {
 		t.Errorf("expected name 'X-Forwarded-By', got %v", setOp["name"])
 	}
-	if setOp["value"] != "sentinel" {
-		t.Errorf("expected value 'sentinel', got %v", setOp["value"])
+	if setOp["value"] != "zentinel" {
+		t.Errorf("expected value 'zentinel', got %v", setOp["value"])
 	}
 
 	// Check second header (remove)

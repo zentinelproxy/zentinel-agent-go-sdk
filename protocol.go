@@ -1,4 +1,4 @@
-package sentinel
+package zentinel
 
 import (
 	"encoding/base64"
@@ -8,7 +8,7 @@ import (
 	"io"
 )
 
-// ProtocolVersion is the version of the Sentinel agent protocol.
+// ProtocolVersion is the version of the Zentinel agent protocol.
 const ProtocolVersion = 1
 
 // MaxMessageSize is the maximum size of a protocol message (10MB).

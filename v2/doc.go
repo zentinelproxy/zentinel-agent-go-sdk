@@ -1,4 +1,4 @@
-// Package v2 provides the v2 protocol implementation for Sentinel agents.
+// Package v2 provides the v2 protocol implementation for Zentinel agents.
 //
 // The v2 protocol adds support for:
 //   - Bidirectional streaming
@@ -26,9 +26,9 @@
 //	        HandleResponseHeaders()
 //	}
 //
-//	func (a *MyAgent) OnRequest(ctx context.Context, req *sentinel.Request) *sentinel.Decision {
+//	func (a *MyAgent) OnRequest(ctx context.Context, req *zentinel.Request) *zentinel.Decision {
 //	    // Your logic here
-//	    return sentinel.Allow()
+//	    return zentinel.Allow()
 //	}
 //
 // Run the agent with the v2 runner:

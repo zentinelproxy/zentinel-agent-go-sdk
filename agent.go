@@ -1,4 +1,4 @@
-package sentinel
+package zentinel
 
 import (
 	"context"
@@ -6,10 +6,10 @@ import (
 	"sync"
 )
 
-// Agent is the interface for Sentinel agents.
+// Agent is the interface for Zentinel agents.
 //
 // Implement this interface to create a custom agent that can process
-// HTTP requests and responses in the Sentinel proxy pipeline.
+// HTTP requests and responses in the Zentinel proxy pipeline.
 //
 // Example:
 //
@@ -63,14 +63,14 @@ type Agent interface {
 // Example:
 //
 //	type MyAgent struct {
-//	    sentinel.BaseAgent
+//	    zentinel.BaseAgent
 //	}
 //
 //	func (a *MyAgent) Name() string { return "my-agent" }
 //
 //	func (a *MyAgent) OnRequest(ctx context.Context, req *Request) *Decision {
 //	    // Your custom logic here
-//	    return sentinel.Allow()
+//	    return zentinel.Allow()
 //	}
 type BaseAgent struct{}
 
@@ -123,12 +123,12 @@ func (a *BaseAgent) OnGuardrailInspect(ctx context.Context, event *GuardrailInsp
 //	}
 //
 //	type MyAgent struct {
-//	    *sentinel.ConfigurableAgentBase[MyConfig]
+//	    *zentinel.ConfigurableAgentBase[MyConfig]
 //	}
 //
 //	func NewMyAgent() *MyAgent {
 //	    return &MyAgent{
-//	        ConfigurableAgentBase: sentinel.NewConfigurableAgent(MyConfig{
+//	        ConfigurableAgentBase: zentinel.NewConfigurableAgent(MyConfig{
 //	            RateLimit: 100,
 //	            Enabled:   true,
 //	        }),
@@ -140,10 +140,10 @@ func (a *BaseAgent) OnGuardrailInspect(ctx context.Context, event *GuardrailInsp
 //	func (a *MyAgent) OnRequest(ctx context.Context, req *Request) *Decision {
 //	    cfg := a.Config()
 //	    if !cfg.Enabled {
-//	        return sentinel.Allow()
+//	        return zentinel.Allow()
 //	    }
 //	    // Use cfg.RateLimit...
-//	    return sentinel.Allow()
+//	    return zentinel.Allow()
 //	}
 type ConfigurableAgent[T any] interface {
 	Agent

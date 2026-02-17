@@ -1,4 +1,4 @@
-// Configurable Sentinel v2 agent example.
+// Configurable Zentinel v2 agent example.
 //
 // This example demonstrates a v2 agent with typed configuration that:
 // - Accepts rate limit configuration from the proxy
@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
-	"github.com/raskell-io/sentinel-agent-go-sdk/v2"
+	zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+	"github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 )
 
 // RateLimitConfig is the configuration for the rate limiting agent.
@@ -102,18 +102,18 @@ func (a *RateLimitAgentV2) resetCounts() {
 }
 
 // OnRequest processes incoming requests with rate limiting.
-func (a *RateLimitAgentV2) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *RateLimitAgentV2) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
 	config := a.Config()
 
 	// Check if agent is enabled
 	if !config.Enabled {
-		return sentinel.Allow()
+		return zentinel.Allow()
 	}
 
 	// Check blocked paths
 	for _, blockedPath := range config.BlockedPaths {
 		if request.PathStartsWith(blockedPath) {
-			return sentinel.Deny().
+			return zentinel.Deny().
 				WithBody(fmt.Sprintf("Path %s is blocked", blockedPath)).
 				WithTag("blocked_path").
 				WithRuleID("PATH_BLOCKED")
@@ -128,7 +128,7 @@ func (a *RateLimitAgentV2) OnRequest(ctx context.Context, request *sentinel.Requ
 	a.mu.Unlock()
 
 	if count > config.RequestsPerMinute {
-		return sentinel.RateLimited().
+		return zentinel.RateLimited().
 			WithBody("Rate limit exceeded").
 			WithTag("rate_limited").
 			WithMetadata("client_ip", clientIP).
@@ -139,19 +139,19 @@ func (a *RateLimitAgentV2) OnRequest(ctx context.Context, request *sentinel.Requ
 
 	// Allow with rate limit headers
 	remaining := config.RequestsPerMinute - count
-	return sentinel.Allow().
+	return zentinel.Allow().
 		AddResponseHeader("X-RateLimit-Limit", fmt.Sprintf("%d", config.RequestsPerMinute)).
 		AddResponseHeader("X-RateLimit-Remaining", fmt.Sprintf("%d", remaining)).
 		AddResponseHeader("X-RateLimit-Reset", fmt.Sprintf("%d", time.Now().Add(time.Minute).Unix()))
 }
 
 // OnRequestBody validates request body size.
-func (a *RateLimitAgentV2) OnRequestBody(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *RateLimitAgentV2) OnRequestBody(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
 	config := a.Config()
 
 	body := request.Body()
 	if len(body) > config.MaxBodySize {
-		return sentinel.Block(413).
+		return zentinel.Block(413).
 			WithBody("Request body too large").
 			WithTag("body_too_large").
 			WithMetadata("body_size", len(body)).
@@ -162,18 +162,18 @@ func (a *RateLimitAgentV2) OnRequestBody(ctx context.Context, request *sentinel.
 	if request.IsJSON() && len(body) > 0 {
 		var js interface{}
 		if err := json.Unmarshal(body, &js); err != nil {
-			return sentinel.Block(400).
+			return zentinel.Block(400).
 				WithBody("Invalid JSON in request body").
 				WithTag("invalid_json")
 		}
 	}
 
-	return sentinel.Allow()
+	return zentinel.Allow()
 }
 
 // OnResponse adds rate limit headers to response.
-func (a *RateLimitAgentV2) OnResponse(ctx context.Context, request *sentinel.Request, response *sentinel.Response) *sentinel.Decision {
-	return sentinel.Allow()
+func (a *RateLimitAgentV2) OnResponse(ctx context.Context, request *zentinel.Request, response *zentinel.Response) *zentinel.Decision {
+	return zentinel.Allow()
 }
 
 // HealthCheck returns detailed health status.

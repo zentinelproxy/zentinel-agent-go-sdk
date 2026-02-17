@@ -1,16 +1,16 @@
-# Getting Started with Sentinel Agent Go SDK
+# Getting Started with Zentinel Agent Go SDK
 
-This guide will walk you through creating your first Sentinel agent in Go.
+This guide will walk you through creating your first Zentinel agent in Go.
 
 ## Prerequisites
 
 - Go 1.21 or later
-- A running Sentinel proxy instance (or just the SDK for development)
+- A running Zentinel proxy instance (or just the SDK for development)
 
 ## Installation
 
 ```bash
-go get github.com/raskell-io/sentinel-agent-go-sdk
+go get github.com/zentinelproxy/zentinel-agent-go-sdk
 ```
 
 ## Your First Agent
@@ -22,29 +22,29 @@ package main
 
 import (
     "context"
-    sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+    zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
 type MyAgent struct {
-    sentinel.BaseAgent
+    zentinel.BaseAgent
 }
 
 func (a *MyAgent) Name() string {
     return "my-agent"
 }
 
-func (a *MyAgent) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *MyAgent) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
     // Block requests to /admin paths
     if request.PathStartsWith("/admin") {
-        return sentinel.Deny().WithBody("Access denied")
+        return zentinel.Deny().WithBody("Access denied")
     }
 
     // Allow all other requests
-    return sentinel.Allow()
+    return zentinel.Allow()
 }
 
 func main() {
-    sentinel.RunAgent(&MyAgent{})
+    zentinel.RunAgent(&MyAgent{})
 }
 ```
 
@@ -54,7 +54,7 @@ func main() {
 go run main.go --socket /tmp/my-agent.sock
 ```
 
-Your agent is now listening on `/tmp/my-agent.sock` and ready to receive events from Sentinel.
+Your agent is now listening on `/tmp/my-agent.sock` and ready to receive events from Zentinel.
 
 ## Understanding the Agent Interface
 
@@ -72,7 +72,7 @@ type Agent interface {
 }
 ```
 
-Embed `sentinel.BaseAgent` to get default implementations for all methods, then override only the ones you need.
+Embed `zentinel.BaseAgent` to get default implementations for all methods, then override only the ones you need.
 
 ## Making Decisions
 
@@ -80,26 +80,26 @@ The `Decision` builder provides a fluent API:
 
 ```go
 // Allow the request
-sentinel.Allow()
+zentinel.Allow()
 
 // Block with 403 Forbidden
-sentinel.Deny()
+zentinel.Deny()
 
 // Block with custom status
-sentinel.Block(429).WithBody("Too many requests")
+zentinel.Block(429).WithBody("Too many requests")
 
 // Redirect
-sentinel.Redirect("/login", 302)
-sentinel.RedirectPermanent("/new-path")
+zentinel.Redirect("/login", 302)
+zentinel.RedirectPermanent("/new-path")
 
 // Allow with header modifications
-sentinel.Allow().
+zentinel.Allow().
     AddRequestHeader("X-User-ID", "12345").
     AddResponseHeader("X-Cache", "HIT").
     RemoveResponseHeader("Server")
 
 // Add audit metadata
-sentinel.Deny().
+zentinel.Deny().
     WithTag("security").
     WithRuleID("ADMIN-001").
     WithMetadata("reason", "blocked by rule")
@@ -110,7 +110,7 @@ sentinel.Deny().
 The `Request` type provides convenient methods:
 
 ```go
-func (a *MyAgent) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *MyAgent) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
     // Path inspection
     path := request.Path()
     if request.PathStartsWith("/api/") { /* ... */ }
@@ -126,7 +126,7 @@ func (a *MyAgent) OnRequest(ctx context.Context, request *sentinel.Request) *sen
     method := request.Method()
     correlationID := request.CorrelationID()
 
-    return sentinel.Allow()
+    return zentinel.Allow()
 }
 ```
 
@@ -135,17 +135,17 @@ func (a *MyAgent) OnRequest(ctx context.Context, request *sentinel.Request) *sen
 Inspect upstream responses:
 
 ```go
-func (a *MyAgent) OnResponse(ctx context.Context, request *sentinel.Request, response *sentinel.Response) *sentinel.Decision {
+func (a *MyAgent) OnResponse(ctx context.Context, request *zentinel.Request, response *zentinel.Response) *zentinel.Decision {
     // Check status code
     if response.StatusCode() >= 500 {
-        return sentinel.Allow().WithTag("upstream-error")
+        return zentinel.Allow().WithTag("upstream-error")
     }
 
     // Inspect headers
     contentType := response.Header("Content-Type")
 
     // Add security headers
-    return sentinel.Allow().
+    return zentinel.Allow().
         AddResponseHeader("X-Frame-Options", "DENY").
         AddResponseHeader("X-Content-Type-Options", "nosniff")
 }
@@ -162,12 +162,12 @@ type MyConfig struct {
 }
 
 type MyAgent struct {
-    *sentinel.ConfigurableAgentBase[MyConfig]
+    *zentinel.ConfigurableAgentBase[MyConfig]
 }
 
 func NewMyAgent() *MyAgent {
     return &MyAgent{
-        ConfigurableAgentBase: sentinel.NewConfigurableAgent(MyConfig{
+        ConfigurableAgentBase: zentinel.NewConfigurableAgent(MyConfig{
             RateLimit: 100,
             Enabled:   true,
         }),
@@ -178,13 +178,13 @@ func (a *MyAgent) Name() string {
     return "my-configurable-agent"
 }
 
-func (a *MyAgent) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *MyAgent) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
     cfg := a.Config()
     if !cfg.Enabled {
-        return sentinel.Allow()
+        return zentinel.Allow()
     }
     // Use cfg.RateLimit...
-    return sentinel.Allow()
+    return zentinel.Allow()
 }
 
 func (a *MyAgent) OnConfigApplied(ctx context.Context, config MyConfig) {
@@ -192,9 +192,9 @@ func (a *MyAgent) OnConfigApplied(ctx context.Context, config MyConfig) {
 }
 ```
 
-## Connecting to Sentinel
+## Connecting to Zentinel
 
-Configure Sentinel to use your agent:
+Configure Zentinel to use your agent:
 
 ```kdl
 agents {
@@ -241,7 +241,7 @@ go run main.go \
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--socket PATH` | Unix socket path | `/tmp/sentinel-agent.sock` |
+| `--socket PATH` | Unix socket path | `/tmp/zentinel-agent.sock` |
 | `--log-level LEVEL` | debug, info, warn, error | `info` |
 | `--json-logs` | Output logs as JSON | disabled |
 
@@ -250,7 +250,7 @@ go run main.go \
 Use `OnRequestComplete` for logging and metrics:
 
 ```go
-func (a *MyAgent) OnRequestComplete(ctx context.Context, request *sentinel.Request, status int, durationMS int) {
+func (a *MyAgent) OnRequestComplete(ctx context.Context, request *zentinel.Request, status int, durationMS int) {
     fmt.Printf("%s - %s %s -> %d (%dms)\n",
         request.ClientIP(),
         request.Method(),
@@ -266,23 +266,23 @@ func (a *MyAgent) OnRequestComplete(ctx context.Context, request *sentinel.Reque
 Return appropriate decisions for errors:
 
 ```go
-func (a *MyAgent) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *MyAgent) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
     token := request.Header("Authorization")
     if token == "" {
-        return sentinel.Unauthorized().
+        return zentinel.Unauthorized().
             WithBody("Authorization header required").
             WithTag("auth-missing")
     }
 
     userID, err := validateToken(token)
     if err != nil {
-        return sentinel.Unauthorized().
+        return zentinel.Unauthorized().
             WithBody("Invalid token").
             WithTag("auth-failed").
             WithMetadata("error", err.Error())
     }
 
-    return sentinel.Allow().AddRequestHeader("X-User-ID", userID)
+    return zentinel.Allow().AddRequestHeader("X-User-ID", userID)
 }
 ```
 
@@ -296,12 +296,12 @@ package main
 import (
     "context"
     "testing"
-    sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+    zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
 func TestBlocksAdminPath(t *testing.T) {
     agent := &MyAgent{}
-    request := sentinel.NewRequest().WithPath("/admin/users")
+    request := zentinel.NewRequest().WithPath("/admin/users")
 
     decision := agent.OnRequest(context.Background(), request)
 
@@ -315,9 +315,9 @@ func TestBlocksAdminPath(t *testing.T) {
 
 - Read the [API Reference](api.md) for complete documentation
 - Browse [Examples](../examples/) for common patterns
-- See the [Configuration](configuration.md) guide for Sentinel setup
+- See the [Configuration](configuration.md) guide for Zentinel setup
 
 ## Need Help?
 
-- [GitHub Issues](https://github.com/raskell-io/sentinel-agent-go-sdk/issues)
-- [Sentinel Documentation](https://sentinel.raskell.io/docs)
+- [GitHub Issues](https://github.com/zentinelproxy/zentinel-agent-go-sdk/issues)
+- [Zentinel Documentation](https://zentinelproxy.io/docs)

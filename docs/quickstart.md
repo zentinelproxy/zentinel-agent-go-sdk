@@ -1,11 +1,11 @@
 # Quickstart Guide
 
-This guide will help you create your first Sentinel agent in under 5 minutes.
+This guide will help you create your first Zentinel agent in under 5 minutes.
 
 ## Prerequisites
 
 - Go 1.22+
-- Sentinel proxy (for testing with real traffic)
+- Zentinel proxy (for testing with real traffic)
 
 ## Step 1: Create a New Project
 
@@ -13,7 +13,7 @@ This guide will help you create your first Sentinel agent in under 5 minutes.
 mkdir my-agent
 cd my-agent
 go mod init my-agent
-go get github.com/raskell-io/sentinel-agent-go-sdk
+go get github.com/zentinelproxy/zentinel-agent-go-sdk
 ```
 
 ## Step 2: Create Your Agent
@@ -27,35 +27,35 @@ import (
     "context"
     "fmt"
 
-    sentinel "github.com/raskell-io/sentinel-agent-go-sdk"
+    zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
 type MyAgent struct {
-    sentinel.BaseAgent
+    zentinel.BaseAgent
 }
 
 func (a *MyAgent) Name() string {
     return "my-agent"
 }
 
-func (a *MyAgent) OnRequest(ctx context.Context, request *sentinel.Request) *sentinel.Decision {
+func (a *MyAgent) OnRequest(ctx context.Context, request *zentinel.Request) *zentinel.Decision {
     // Log the request
     fmt.Printf("Processing: %s %s\n", request.Method(), request.Path())
 
     // Block requests to sensitive paths
     if request.PathStartsWith("/admin") {
-        return sentinel.Deny().
+        return zentinel.Deny().
             WithBody("Access denied").
             WithTag("blocked")
     }
 
     // Allow with a custom header
-    return sentinel.Allow().
+    return zentinel.Allow().
         AddRequestHeader("X-Processed-By", "my-agent")
 }
 
 func main() {
-    sentinel.RunAgent(&MyAgent{})
+    zentinel.RunAgent(&MyAgent{})
 }
 ```
 
@@ -71,9 +71,9 @@ You should see:
 [my-agent] INFO: Agent 'my-agent' listening on /tmp/my-agent.sock
 ```
 
-## Step 4: Configure Sentinel
+## Step 4: Configure Zentinel
 
-Add the agent to your Sentinel configuration (`sentinel.kdl`):
+Add the agent to your Zentinel configuration (`zentinel.kdl`):
 
 ```kdl
 agents {
@@ -107,7 +107,7 @@ routes {
 
 ## Step 5: Test It
 
-With Sentinel running, send a test request:
+With Zentinel running, send a test request:
 
 ```bash
 # This should pass through
@@ -123,7 +123,7 @@ The `RunAgent` function supports these CLI arguments:
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--socket PATH` | Unix socket path | `/tmp/sentinel-agent.sock` |
+| `--socket PATH` | Unix socket path | `/tmp/zentinel-agent.sock` |
 | `--log-level LEVEL` | Log level (debug, info, warn, error) | `info` |
 | `--json-logs` | Enable JSON log format | disabled |
 
@@ -131,4 +131,4 @@ The `RunAgent` function supports these CLI arguments:
 
 - Read the [API Reference](api.md) for complete documentation
 - See [Examples](examples.md) for common patterns
-- Learn about [Sentinel Configuration](configuration.md) options
+- Learn about [Zentinel Configuration](configuration.md) options
