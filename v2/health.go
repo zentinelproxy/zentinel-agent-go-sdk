@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"sort"
 	"time"
 )
 
@@ -274,7 +275,7 @@ func (c *MetricsCollector) Report() *MetricsReport {
 		// Calculate percentiles (simplified - would need proper implementation)
 		sorted := make([]float64, len(c.latencies))
 		copy(sorted, c.latencies)
-		sortFloat64s(sorted)
+		sort.Float64s(sorted)
 
 		report.P50LatencyMs = percentile(sorted, 0.50)
 		report.P95LatencyMs = percentile(sorted, 0.95)
@@ -284,22 +285,22 @@ func (c *MetricsCollector) Report() *MetricsReport {
 	return report
 }
 
-// sortFloat64s sorts a slice of float64s in ascending order.
-func sortFloat64s(s []float64) {
-	for i := 0; i < len(s); i++ {
-		for j := i + 1; j < len(s); j++ {
-			if s[j] < s[i] {
-				s[i], s[j] = s[j], s[i]
-			}
-		}
-	}
-}
-
-// percentile calculates the p-th percentile of a sorted slice.
+// percentile calculates the p-th percentile of a sorted slice using linear interpolation.
 func percentile(sorted []float64, p float64) float64 {
 	if len(sorted) == 0 {
 		return 0
 	}
-	idx := int(float64(len(sorted)-1) * p)
-	return sorted[idx]
+	if len(sorted) == 1 {
+		return sorted[0]
+	}
+
+	// Linear interpolation between adjacent ranks
+	rank := p * float64(len(sorted)-1)
+	lower := int(rank)
+	upper := lower + 1
+	if upper >= len(sorted) {
+		return sorted[len(sorted)-1]
+	}
+	frac := rank - float64(lower)
+	return sorted[lower] + frac*(sorted[upper]-sorted[lower])
 }

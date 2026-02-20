@@ -15,6 +15,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/pflag"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 // TransportType specifies the transport mechanism.
@@ -378,10 +380,50 @@ func (r *AgentRunnerV2) performHandshake(conn net.Conn) error {
 }
 
 func (r *AgentRunnerV2) runGRPC() error {
-	// Note: Full gRPC implementation would require protobuf definitions
-	// and generated code. This is a placeholder that shows the structure.
-	log.Error().Msg("gRPC transport requires protobuf support - use UDS for now")
-	return fmt.Errorf("gRPC transport not yet implemented - use UDS transport")
+	lis, err := net.Listen("tcp", r.config.GRPCAddress)
+	if err != nil {
+		return fmt.Errorf("failed to listen on %s: %w", r.config.GRPCAddress, err)
+	}
+
+	var opts []grpc.ServerOption
+
+	// Add JSON codec so the service can use JSON marshaling instead of protobuf.
+	// This allows the gRPC transport to work without protoc-generated code,
+	// while remaining wire-compatible with proto-based clients via JSON encoding.
+	opts = append(opts, grpc.ForceServerCodec(jsonCodec{}))
+
+	if r.config.TLSConfig != nil {
+		opts = append(opts, grpc.Creds(credentials.NewTLS(r.config.TLSConfig)))
+	}
+
+	grpcServer := grpc.NewServer(opts...)
+	registerAgentService(grpcServer, r)
+
+	// Set up signal handling
+	r.setupSignalHandling()
+
+	log.Info().Str("address", r.config.GRPCAddress).Msg("Agent listening (gRPC)")
+
+	go func() {
+		<-r.shutdown
+		log.Info().Msg("Stopping gRPC server...")
+		grpcServer.GracefulStop()
+	}()
+
+	if err := grpcServer.Serve(lis); err != nil {
+		select {
+		case <-r.shutdown:
+			// Expected shutdown after GracefulStop
+		default:
+			return fmt.Errorf("gRPC server error: %w", err)
+		}
+	}
+
+	// Wait for in-flight requests to drain
+	r.waitForDrain()
+
+	log.Info().Msg("Agent shutdown complete")
+	return nil
 }
 
 func (r *AgentRunnerV2) runReverse() error {
