@@ -97,7 +97,7 @@ Zentinel's agent system moves complex logic **out of the proxy core** and into i
 - **Independent deployment** — Update agent logic without restarting the proxy
 - **Failure boundaries** — Agent crashes don't take down the dataplane
 
-Agents communicate with Zentinel over Unix sockets using a simple length-prefixed JSON protocol.
+Agents communicate with Zentinel over Unix sockets (UDS) or gRPC using the v2 agent protocol.
 
 ## Architecture
 
@@ -106,7 +106,7 @@ Agents communicate with Zentinel over Unix sockets using a simple length-prefixe
 │   Client    │────────▶│   Zentinel   │────────▶│   Upstream   │
 └─────────────┘         └──────────────┘         └──────────────┘
                                │
-                               │ Unix Socket (JSON)
+                               │ UDS or gRPC (v2 protocol)
                                ▼
                         ┌──────────────┐
                         │    Agent     │
@@ -492,8 +492,8 @@ zentinel-agent-go-sdk/
 This SDK implements Zentinel Agent Protocol v2:
 
 - **Transport**: Unix domain sockets (UDS) or gRPC
-- **Encoding**: Length-prefixed JSON (4-byte big-endian length prefix) for UDS
-- **Max message size**: 10 MB
+- **Encoding**: Length-prefixed binary (4-byte big-endian length + 1-byte type prefix) for UDS
+- **Max message size**: 16 MB (UDS) / 10 MB (gRPC)
 - **Events**: `configure`, `request_headers`, `request_body_chunk`, `response_headers`, `response_body_chunk`, `request_complete`, `websocket_frame`, `guardrail_inspect`
 - **Decisions**: `allow`, `block`, `redirect`, `challenge`
 
