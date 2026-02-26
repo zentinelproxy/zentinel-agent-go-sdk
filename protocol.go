@@ -9,7 +9,7 @@ import (
 )
 
 // ProtocolVersion is the version of the Zentinel agent protocol.
-const ProtocolVersion = 1
+const ProtocolVersion = 2
 
 // MaxMessageSize is the maximum size of a protocol message (10MB).
 const MaxMessageSize = 10 * 1024 * 1024

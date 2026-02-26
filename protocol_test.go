@@ -10,8 +10,8 @@ import (
 
 // TestProtocolVersion verifies the protocol version matches.
 func TestProtocolVersion(t *testing.T) {
-	if ProtocolVersion != 1 {
-		t.Errorf("expected ProtocolVersion 1, got %d", ProtocolVersion)
+	if ProtocolVersion != 2 {
+		t.Errorf("expected ProtocolVersion 2, got %d", ProtocolVersion)
 	}
 }
 
@@ -486,8 +486,8 @@ func TestWireFormatRoundTrip(t *testing.T) {
 	}
 
 	// Verify structure matches Rust expectations
-	if parsed["version"].(float64) != 1 {
-		t.Errorf("expected version 1, got %v", parsed["version"])
+	if parsed["version"].(float64) != 2 {
+		t.Errorf("expected version 2, got %v", parsed["version"])
 	}
 
 	decision := parsed["decision"].(map[string]interface{})
@@ -561,7 +561,7 @@ func TestBodyMutationFormat_PassThrough(t *testing.T) {
 // TestReadWriteMessage tests length-prefixed message I/O.
 func TestReadWriteMessage(t *testing.T) {
 	message := map[string]interface{}{
-		"version":    1,
+		"version":    2,
 		"event_type": "request_headers",
 		"payload": map[string]interface{}{
 			"method": "GET",
@@ -582,8 +582,8 @@ func TestReadWriteMessage(t *testing.T) {
 		t.Fatalf("failed to read message: %v", err)
 	}
 
-	if read["version"].(float64) != 1 {
-		t.Errorf("expected version 1, got %v", read["version"])
+	if read["version"].(float64) != 2 {
+		t.Errorf("expected version 2, got %v", read["version"])
 	}
 	if read["event_type"] != "request_headers" {
 		t.Errorf("expected event_type 'request_headers', got %v", read["event_type"])

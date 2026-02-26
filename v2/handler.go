@@ -117,7 +117,7 @@ func (h *AgentHandlerV2) handleRequestHeaders(ctx context.Context, msg *V2Messag
 		h.cancelMu.Unlock()
 	}()
 
-	// Convert to v1 format for agent interface compatibility
+	// Convert to base format for agent interface compatibility
 	event := &zentinel.RequestHeadersEvent{
 		Metadata: zentinel.RequestMetadata{
 			CorrelationID: headers.Metadata.CorrelationID,
@@ -202,7 +202,7 @@ func (h *AgentHandlerV2) handleResponseHeaders(ctx context.Context, msg *V2Messa
 		return h.buildAllowDecision(headers.RequestID)
 	}
 
-	// Convert to v1 format
+	// Convert to base format
 	event := &zentinel.ResponseHeadersEvent{
 		CorrelationID: request.CorrelationID(),
 		Status:        int(headers.StatusCode),
@@ -420,8 +420,7 @@ func (h *AgentHandlerV2) Cleanup(requestID uint64) {
 	h.cancelMu.Unlock()
 }
 
-// HandleLegacyEvent handles a v1 protocol event for backward compatibility.
-// This allows v2 agents to also work with v1 protocol.
+// HandleLegacyEvent handles a legacy protocol event for backward compatibility.
 func (h *AgentHandlerV2) HandleLegacyEvent(ctx context.Context, event map[string]interface{}) (interface{}, error) {
 	eventType, _ := event["event_type"].(string)
 	payload, _ := event["payload"].(map[string]interface{})

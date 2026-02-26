@@ -86,7 +86,7 @@ go run main.go --socket /tmp/my-agent.sock
 | **Request/Response Wrappers** | Ergonomic access to headers, body, query params, metadata |
 | **Typed Configuration** | Generic `ConfigurableAgentBase[T]` with struct tag support |
 | **Concurrent Safe** | Built for Go's concurrency model with proper synchronization |
-| **Protocol Compatible** | Full compatibility with Zentinel agent protocol v1 |
+| **Protocol Compatible** | Full compatibility with Zentinel agent protocol v2 |
 
 ## Why Agents?
 
@@ -489,7 +489,7 @@ zentinel-agent-go-sdk/
 
 ## Protocol
 
-This SDK implements Zentinel Agent Protocol v1:
+This SDK implements Zentinel Agent Protocol v2:
 
 - **Transport**: Unix domain sockets (UDS) or gRPC
 - **Encoding**: Length-prefixed JSON (4-byte big-endian length prefix) for UDS
