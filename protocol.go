@@ -11,7 +11,8 @@ import (
 // ProtocolVersion is the version of the Zentinel agent protocol.
 const ProtocolVersion = 2
 
-// MaxMessageSize is the maximum size of a protocol message (10MB).
+// MaxMessageSize is the maximum message size for the v1 JSON protocol (10MB).
+// Deprecated: V2 uses MaxUdsMessageSize (16 MB) or MaxGrpcMessageSize (10 MB).
 const MaxMessageSize = 10 * 1024 * 1024
 
 // EventType represents the type of event sent from proxy to agent.
@@ -312,7 +313,7 @@ func NewAllowResponse() AgentResponse {
 	}
 }
 
-// ReadMessage reads a length-prefixed JSON message from a reader.
+// ReadMessage reads a length-prefixed message from a reader.
 func ReadMessage(r io.Reader) (map[string]interface{}, error) {
 	// Read length prefix (4 bytes, big-endian)
 	lengthBuf := make([]byte, 4)
@@ -342,7 +343,7 @@ func ReadMessage(r io.Reader) (map[string]interface{}, error) {
 	return result, nil
 }
 
-// WriteMessage writes a length-prefixed JSON message to a writer.
+// WriteMessage writes a length-prefixed message to a writer.
 func WriteMessage(w io.Writer, data interface{}) error {
 	jsonBytes, err := json.Marshal(data)
 	if err != nil {
