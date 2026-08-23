@@ -10,11 +10,11 @@ import (
 // TestAgentV2Impl is a test agent implementing AgentV2.
 type TestAgentV2Impl struct {
 	BaseAgentV2
-	onRequestCalled    bool
-	onShutdownCalled   bool
-	onDrainCalled      bool
-	onStreamClosedID   string
-	onCancelRequestID  uint64
+	onRequestCalled   bool
+	onShutdownCalled  bool
+	onDrainCalled     bool
+	onStreamClosedID  string
+	onCancelRequestID uint64
 }
 
 func (a *TestAgentV2Impl) Name() string {

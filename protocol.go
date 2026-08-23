@@ -19,14 +19,14 @@ const MaxMessageSize = 10 * 1024 * 1024
 type EventType string
 
 const (
-	EventTypeRequestHeaders      EventType = "request_headers"
-	EventTypeRequestBodyChunk    EventType = "request_body_chunk"
-	EventTypeResponseHeaders     EventType = "response_headers"
-	EventTypeResponseBodyChunk   EventType = "response_body_chunk"
-	EventTypeRequestComplete     EventType = "request_complete"
-	EventTypeWebSocketFrame      EventType = "websocket_frame"
-	EventTypeConfigure           EventType = "configure"
-	EventTypeGuardrailInspect    EventType = "guardrail_inspect"
+	EventTypeRequestHeaders    EventType = "request_headers"
+	EventTypeRequestBodyChunk  EventType = "request_body_chunk"
+	EventTypeResponseHeaders   EventType = "response_headers"
+	EventTypeResponseBodyChunk EventType = "response_body_chunk"
+	EventTypeRequestComplete   EventType = "request_complete"
+	EventTypeWebSocketFrame    EventType = "websocket_frame"
+	EventTypeConfigure         EventType = "configure"
+	EventTypeGuardrailInspect  EventType = "guardrail_inspect"
 )
 
 // GuardrailInspectionType represents the type of guardrail inspection.
