@@ -84,14 +84,14 @@ var agentServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "ProcessStream",
 			Handler:       processStreamHandler,
-			ServerStreams:  true,
-			ClientStreams:  true,
+			ServerStreams: true,
+			ClientStreams: true,
 		},
 		{
 			StreamName:    "ControlStream",
 			Handler:       controlStreamHandler,
-			ServerStreams:  true,
-			ClientStreams:  true,
+			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "agent_v2.proto",
@@ -328,10 +328,10 @@ func (s *agentGRPCService) controlStream(stream grpc.ServerStream) error {
 
 		// Parse the control message
 		var controlMsg struct {
-			Health     json.RawMessage `json:"health,omitempty"`
-			Metrics    json.RawMessage `json:"metrics,omitempty"`
+			Health       json.RawMessage `json:"health,omitempty"`
+			Metrics      json.RawMessage `json:"metrics,omitempty"`
 			ConfigUpdate json.RawMessage `json:"config_update,omitempty"`
-			Log        json.RawMessage `json:"log,omitempty"`
+			Log          json.RawMessage `json:"log,omitempty"`
 		}
 		if err := json.Unmarshal(in.Data, &controlMsg); err != nil {
 			log.Error().Err(err).Str("stream_id", streamID).Msg("Failed to parse control message")

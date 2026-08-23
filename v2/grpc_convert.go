@@ -10,14 +10,14 @@ import (
 // grpcProxyToAgentMessage is the JSON representation of a ProxyToAgent gRPC message.
 // This mirrors the proto oneof structure using JSON fields.
 type grpcProxyToAgentMessage struct {
-	Handshake       *grpcHandshakeRequest    `json:"handshake,omitempty"`
-	RequestHeaders  *grpcRequestHeadersEvent `json:"request_headers,omitempty"`
-	RequestBody     *grpcBodyChunkEvent      `json:"request_body_chunk,omitempty"`
+	Handshake       *grpcHandshakeRequest     `json:"handshake,omitempty"`
+	RequestHeaders  *grpcRequestHeadersEvent  `json:"request_headers,omitempty"`
+	RequestBody     *grpcBodyChunkEvent       `json:"request_body_chunk,omitempty"`
 	ResponseHeaders *grpcResponseHeadersEvent `json:"response_headers,omitempty"`
-	ResponseBody    *grpcBodyChunkEvent      `json:"response_body_chunk,omitempty"`
-	Cancel          *grpcCancelRequest       `json:"cancel,omitempty"`
-	Configure       *grpcConfigureEvent      `json:"configure,omitempty"`
-	Ping            *grpcPing                `json:"ping,omitempty"`
+	ResponseBody    *grpcBodyChunkEvent       `json:"response_body_chunk,omitempty"`
+	Cancel          *grpcCancelRequest        `json:"cancel,omitempty"`
+	Configure       *grpcConfigureEvent       `json:"configure,omitempty"`
+	Ping            *grpcPing                 `json:"ping,omitempty"`
 	RequestComplete *grpcRequestCompleteEvent `json:"request_complete,omitempty"`
 }
 
@@ -40,20 +40,20 @@ type grpcHandshakeRequest struct {
 
 // grpcHandshakeResponse maps to the proto HandshakeResponse.
 type grpcHandshakeResponse struct {
-	ProtocolVersion uint32                  `json:"protocol_version"`
-	Capabilities    *grpcAgentCapabilities  `json:"capabilities,omitempty"`
-	Success         bool                    `json:"success"`
-	Error           *string                 `json:"error,omitempty"`
+	ProtocolVersion uint32                 `json:"protocol_version"`
+	Capabilities    *grpcAgentCapabilities `json:"capabilities,omitempty"`
+	Success         bool                   `json:"success"`
+	Error           *string                `json:"error,omitempty"`
 }
 
 // grpcAgentCapabilities maps to the proto AgentCapabilities.
 type grpcAgentCapabilities struct {
-	ProtocolVersion uint32          `json:"protocol_version"`
-	AgentID         string          `json:"agent_id"`
-	Name            string          `json:"name"`
-	Version         string          `json:"version"`
-	SupportedEvents []int32         `json:"supported_events,omitempty"`
-	Features        *grpcFeatures   `json:"features,omitempty"`
+	ProtocolVersion uint32        `json:"protocol_version"`
+	AgentID         string        `json:"agent_id"`
+	Name            string        `json:"name"`
+	Version         string        `json:"version"`
+	SupportedEvents []int32       `json:"supported_events,omitempty"`
+	Features        *grpcFeatures `json:"features,omitempty"`
 }
 
 // grpcFeatures maps to the proto AgentFeatures.
@@ -160,13 +160,13 @@ type grpcRequestCompleteEvent struct {
 
 // grpcAgentResponse maps to the proto AgentResponse.
 type grpcAgentResponse struct {
-	CorrelationID   string                 `json:"correlation_id"`
-	Decision        interface{}            `json:"decision"`
-	RequestHeaders  []grpcHeaderOp         `json:"request_headers,omitempty"`
-	ResponseHeaders []grpcHeaderOp         `json:"response_headers,omitempty"`
-	Audit           map[string]interface{} `json:"audit,omitempty"`
-	ProcessingTimeMs *uint64               `json:"processing_time_ms,omitempty"`
-	NeedsMore       bool                   `json:"needs_more"`
+	CorrelationID    string                 `json:"correlation_id"`
+	Decision         interface{}            `json:"decision"`
+	RequestHeaders   []grpcHeaderOp         `json:"request_headers,omitempty"`
+	ResponseHeaders  []grpcHeaderOp         `json:"response_headers,omitempty"`
+	Audit            map[string]interface{} `json:"audit,omitempty"`
+	ProcessingTimeMs *uint64                `json:"processing_time_ms,omitempty"`
+	NeedsMore        bool                   `json:"needs_more"`
 }
 
 // grpcHeaderOp maps to the proto HeaderOp.

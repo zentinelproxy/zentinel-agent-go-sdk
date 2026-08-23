@@ -276,17 +276,17 @@ func (d *Decision) Build() AgentResponse {
 
 // Decisions provides shorthand functions for common decisions.
 var Decisions = struct {
-	Allow       func() *Decision
-	Deny        func() *Decision
+	Allow        func() *Decision
+	Deny         func() *Decision
 	Unauthorized func() *Decision
-	RateLimited func() *Decision
-	Block       func(status int, body string) *Decision
-	Redirect    func(url string, permanent bool) *Decision
+	RateLimited  func() *Decision
+	Block        func(status int, body string) *Decision
+	Redirect     func(url string, permanent bool) *Decision
 }{
-	Allow:       Allow,
-	Deny:        Deny,
+	Allow:        Allow,
+	Deny:         Deny,
 	Unauthorized: Unauthorized,
-	RateLimited: RateLimited,
+	RateLimited:  RateLimited,
 	Block: func(status int, body string) *Decision {
 		d := Block(status)
 		if body != "" {

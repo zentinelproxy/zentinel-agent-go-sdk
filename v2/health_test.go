@@ -104,9 +104,9 @@ func TestMetricsCollector_RecordRequest(t *testing.T) {
 	collector := NewMetricsCollector()
 
 	// Record some requests
-	collector.RecordRequest(true, 10.0)  // allowed
-	collector.RecordRequest(true, 20.0)  // allowed
-	collector.RecordRequest(false, 5.0)  // blocked
+	collector.RecordRequest(true, 10.0) // allowed
+	collector.RecordRequest(true, 20.0) // allowed
+	collector.RecordRequest(false, 5.0) // blocked
 	collector.RecordError()
 
 	report := collector.Report()

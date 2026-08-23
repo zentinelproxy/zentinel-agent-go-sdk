@@ -12,24 +12,24 @@ const MaxMessageSizeV2 = 16 * 1024 * 1024
 
 // Message type IDs for v2 binary protocol.
 const (
-	MsgTypeHandshakeRequest   byte = 0x01
-	MsgTypeHandshakeResponse  byte = 0x02
-	MsgTypeRequestHeaders     byte = 0x10
-	MsgTypeRequestBodyChunk   byte = 0x11
-	MsgTypeResponseHeaders    byte = 0x12
-	MsgTypeResponseBodyChunk  byte = 0x13
-	MsgTypeDecision           byte = 0x20
-	MsgTypeBodyMutation       byte = 0x21
-	MsgTypeCancelRequest      byte = 0x30
-	MsgTypeCancelAll          byte = 0x31
-	MsgTypePing               byte = 0xF0
-	MsgTypePong               byte = 0xF1
-	MsgTypeHealthRequest      byte = 0xE0
-	MsgTypeHealthResponse     byte = 0xE1
-	MsgTypeMetricsRequest     byte = 0xE2
-	MsgTypeMetricsResponse    byte = 0xE3
-	MsgTypeRegistration       byte = 0x03
-	MsgTypeRegistrationAck    byte = 0x04
+	MsgTypeHandshakeRequest  byte = 0x01
+	MsgTypeHandshakeResponse byte = 0x02
+	MsgTypeRequestHeaders    byte = 0x10
+	MsgTypeRequestBodyChunk  byte = 0x11
+	MsgTypeResponseHeaders   byte = 0x12
+	MsgTypeResponseBodyChunk byte = 0x13
+	MsgTypeDecision          byte = 0x20
+	MsgTypeBodyMutation      byte = 0x21
+	MsgTypeCancelRequest     byte = 0x30
+	MsgTypeCancelAll         byte = 0x31
+	MsgTypePing              byte = 0xF0
+	MsgTypePong              byte = 0xF1
+	MsgTypeHealthRequest     byte = 0xE0
+	MsgTypeHealthResponse    byte = 0xE1
+	MsgTypeMetricsRequest    byte = 0xE2
+	MsgTypeMetricsResponse   byte = 0xE3
+	MsgTypeRegistration      byte = 0x03
+	MsgTypeRegistrationAck   byte = 0x04
 )
 
 // V2Message represents a v2 protocol message.

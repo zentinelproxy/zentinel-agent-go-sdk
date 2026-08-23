@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 	"github.com/rs/zerolog/log"
+	zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
 // AgentHandlerV2 handles v2 protocol events and routes them to the agent.
