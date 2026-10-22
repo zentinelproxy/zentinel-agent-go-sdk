@@ -28,6 +28,8 @@ import (
     "fmt"
 
     zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+
+    "github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 )
 
 type MyAgent struct {
@@ -55,7 +57,7 @@ func (a *MyAgent) OnRequest(ctx context.Context, request *zentinel.Request) *zen
 }
 
 func main() {
-    zentinel.RunAgent(&MyAgent{})
+    v2.RunAgent(&MyAgent{})
 }
 ```
 
@@ -124,6 +126,7 @@ The `RunAgent` function supports these CLI arguments:
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--socket PATH` | Unix socket path | `/tmp/zentinel-agent.sock` |
+| `--grpc HOST:PORT` | Listen on gRPC instead of the Unix socket | disabled |
 | `--log-level LEVEL` | Log level (debug, info, warn, error) | `info` |
 | `--json-logs` | Enable JSON log format | disabled |
 

@@ -1,5 +1,10 @@
 package v2
 
+import (
+	zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+	pb "github.com/zentinelproxy/zentinel-agent-go-sdk/v2/proto"
+)
+
 // AgentCapabilities describes what processing capabilities an agent supports.
 // Use NewAgentCapabilities() and the builder methods to construct capabilities.
 //
@@ -35,6 +40,17 @@ type AgentCapabilities struct {
 
 	// SupportedFeatures lists additional features the agent supports.
 	SupportedFeatures []string `json:"supported_features,omitempty"`
+
+	// AgentID identifies the agent in the handshake. Empty means the
+	// agent's Name().
+	AgentID string `json:"agent_id,omitempty"`
+
+	// Version is the agent's version, reported in the handshake. Empty
+	// means the SDK version.
+	Version string `json:"version,omitempty"`
+
+	// MaxBodySize is the largest body the agent wants to see (default 10 MB).
+	MaxBodySize uint64 `json:"max_body_size,omitempty"`
 }
 
 // NewAgentCapabilities creates a new AgentCapabilities with default values.
@@ -50,6 +66,18 @@ func NewAgentCapabilities() *AgentCapabilities {
 		MaxConcurrentRequests:  nil,
 		SupportedFeatures:      []string{},
 	}
+}
+
+// WithAgentID sets the agent ID reported in the handshake.
+func (c *AgentCapabilities) WithAgentID(id string) *AgentCapabilities {
+	c.AgentID = id
+	return c
+}
+
+// WithVersion sets the agent version reported in the handshake.
+func (c *AgentCapabilities) WithVersion(version string) *AgentCapabilities {
+	c.Version = version
+	return c
 }
 
 // HandleRequestHeaders enables request header processing.
@@ -132,6 +160,9 @@ func (c *AgentCapabilities) Clone() *AgentCapabilities {
 		HandlesResponseBody:    c.HandlesResponseBody,
 		SupportsStreaming:      c.SupportsStreaming,
 		SupportsCancellation:   c.SupportsCancellation,
+		AgentID:                c.AgentID,
+		Version:                c.Version,
+		MaxBodySize:            c.MaxBodySize,
 	}
 	if c.MaxConcurrentRequests != nil {
 		max := *c.MaxConcurrentRequests
@@ -152,4 +183,108 @@ func (c *AgentCapabilities) HasFeature(feature string) bool {
 		}
 	}
 	return false
+}
+
+// Event type numbers of the handshake's supported_events (the proto's
+// EventType enum).
+const (
+	eventRequestHeaders    int32 = 1
+	eventRequestBodyChunk  int32 = 2
+	eventResponseHeaders   int32 = 3
+	eventResponseBodyChunk int32 = 4
+	eventRequestComplete   int32 = 5
+)
+
+const (
+	defaultMaxBodySize        = 10 * 1024 * 1024
+	defaultMaxConcurrency     = 100
+	defaultPreferredChunkSize = 64 * 1024
+)
+
+func (c *AgentCapabilities) supportedEvents() []int32 {
+	events := []int32{}
+	if c.HandlesRequestHeaders {
+		events = append(events, eventRequestHeaders)
+	}
+	if c.HandlesRequestBody {
+		events = append(events, eventRequestBodyChunk)
+	}
+	if c.HandlesResponseHeaders {
+		events = append(events, eventResponseHeaders)
+	}
+	if c.HandlesResponseBody {
+		events = append(events, eventResponseBodyChunk)
+	}
+	return append(events, eventRequestComplete)
+}
+
+func (c *AgentCapabilities) identity(name string) (id, version string) {
+	id, version = c.AgentID, c.Version
+	if id == "" {
+		id = name
+	}
+	if version == "" {
+		version = zentinel.Version
+	}
+	return id, version
+}
+
+func (c *AgentCapabilities) maxConcurrency() uint32 {
+	if c.MaxConcurrentRequests != nil {
+		return *c.MaxConcurrentRequests
+	}
+	return defaultMaxConcurrency
+}
+
+func (c *AgentCapabilities) maxBodySize() uint64 {
+	if c.MaxBodySize != 0 {
+		return c.MaxBodySize
+	}
+	return defaultMaxBodySize
+}
+
+// ToUds converts the capabilities to the handshake form of the Unix socket
+// transport, for an agent called name.
+func (c *AgentCapabilities) ToUds(name string) UdsCapabilities {
+	id, version := c.identity(name)
+	return UdsCapabilities{
+		AgentID:         id,
+		Name:            name,
+		Version:         version,
+		SupportedEvents: c.supportedEvents(),
+		Features: UdsFeatures{
+			StreamingBody:      c.SupportsStreaming,
+			ConfigPush:         true,
+			ConcurrentRequests: c.maxConcurrency(),
+			Cancellation:       c.SupportsCancellation,
+		},
+		Limits: UdsLimits{
+			MaxBodySize:        c.maxBodySize(),
+			MaxConcurrency:     c.maxConcurrency(),
+			PreferredChunkSize: defaultPreferredChunkSize,
+		},
+	}
+}
+
+// toProto converts the capabilities to the gRPC handshake form.
+func (c *AgentCapabilities) toProto(name string) *pb.AgentCapabilities {
+	id, version := c.identity(name)
+	return &pb.AgentCapabilities{
+		ProtocolVersion: ProtocolVersionV2,
+		AgentId:         id,
+		Name:            name,
+		Version:         version,
+		SupportedEvents: c.supportedEvents(),
+		Features: &pb.AgentFeatures{
+			StreamingBody:      c.SupportsStreaming,
+			ConfigPush:         true,
+			ConcurrentRequests: c.maxConcurrency(),
+			Cancellation:       c.SupportsCancellation,
+		},
+		Limits: &pb.AgentLimits{
+			MaxBodySize:        c.maxBodySize(),
+			MaxConcurrency:     c.maxConcurrency(),
+			PreferredChunkSize: defaultPreferredChunkSize,
+		},
+	}
 }

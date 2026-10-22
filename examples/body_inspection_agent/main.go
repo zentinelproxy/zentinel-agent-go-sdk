@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+	"github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 )
 
 // BodyInspectionAgent inspects request and response bodies.
@@ -81,5 +82,5 @@ func (a *BodyInspectionAgent) OnResponseBody(ctx context.Context, request *zenti
 }
 
 func main() {
-	zentinel.RunAgent(&BodyInspectionAgent{})
+	v2.RunAgent(&BodyInspectionAgent{})
 }

@@ -607,18 +607,18 @@ response.BodyJSON(dest interface{})
 
 ---
 
-## AgentRunner
+## AgentRunnerV2
 
 Runner for starting and managing an agent.
 
 ```go
-import zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+import "github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 ```
 
 ### Usage
 
 ```go
-runner := zentinel.NewAgentRunner(&MyAgent{}).
+runner := v2.NewAgentRunnerV2(v2.Upgrade(&MyAgent{})).
     WithSocket("/tmp/my-agent.sock").
     WithLogLevel("debug")
 
@@ -635,7 +635,11 @@ Set the agent name for logging.
 
 #### `WithSocket(path string)`
 
-Set the Unix socket path.
+Serve on a Unix socket at path.
+
+#### `WithGRPC(address string)` / `WithGRPCTLS(address string, cfg *tls.Config)`
+
+Serve gRPC on host:port instead.
 
 #### `WithJSONLogs()`
 
@@ -649,14 +653,17 @@ Set the log level (debug, info, warn, error).
 
 ## RunAgent
 
-Convenience function to run an agent with CLI argument parsing.
+`v2.RunAgent` runs a plain `zentinel.Agent` with CLI argument parsing
+(`v2.RunAgentV2` does the same for a `v2.AgentV2`). The root package's v1
+`RunAgent` and `AgentRunner` were removed in 0.3.0: they spoke a framing the
+proxy no longer accepts.
 
 ```go
-import zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+import "github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 
 func main() {
-    zentinel.RunAgent(&MyAgent{})
+    v2.RunAgent(&MyAgent{})
 }
 ```
 
-This parses `--socket`, `--log-level`, and `--json-logs` from command line arguments.
+This parses `--socket`, `--grpc`, `--log-level`, and `--json-logs` from command line arguments.

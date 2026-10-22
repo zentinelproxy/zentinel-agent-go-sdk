@@ -57,8 +57,8 @@ type AgentV2 interface {
 	OnStreamClosed(ctx context.Context, streamID string)
 
 	// OnCancel is called when a request is cancelled.
-	// The requestID identifies the cancelled request.
-	OnCancel(ctx context.Context, requestID uint64)
+	// correlationID identifies the cancelled request.
+	OnCancel(ctx context.Context, correlationID string)
 }
 
 // BaseAgentV2 provides default implementations for all AgentV2 methods.
@@ -124,7 +124,7 @@ func (a *BaseAgentV2) OnStreamClosed(ctx context.Context, streamID string) {
 }
 
 // OnCancel is a no-op by default.
-func (a *BaseAgentV2) OnCancel(ctx context.Context, requestID uint64) {
+func (a *BaseAgentV2) OnCancel(ctx context.Context, correlationID string) {
 }
 
 // MetricsCollectorRef returns a reference to the metrics collector.
@@ -222,7 +222,7 @@ func (a *ConfigurableAgentV2Base[T]) OnStreamClosed(ctx context.Context, streamI
 }
 
 // OnCancel is a no-op by default.
-func (a *ConfigurableAgentV2Base[T]) OnCancel(ctx context.Context, requestID uint64) {
+func (a *ConfigurableAgentV2Base[T]) OnCancel(ctx context.Context, correlationID string) {
 }
 
 // MetricsCollectorRef returns a reference to the metrics collector.
@@ -232,3 +232,32 @@ func (a *ConfigurableAgentV2Base[T]) MetricsCollectorRef() *MetricsCollector {
 	}
 	return a.metrics
 }
+
+// Upgrade returns agent as an AgentV2. An AgentV2 is returned unchanged; a
+// plain zentinel.Agent gets the defaults of BaseAgentV2 (request headers
+// only, healthy, no-op lifecycle hooks), so an agent from the v1 SDK runs on
+// the v2 transports unchanged:
+//
+//	v2.RunAgentV2(v2.Upgrade(&MyAgent{}))
+func Upgrade(agent zentinel.Agent) AgentV2 {
+	if a, ok := agent.(AgentV2); ok {
+		return a
+	}
+	return &upgradedAgent{Agent: agent, base: NewBaseAgentV2()}
+}
+
+type upgradedAgent struct {
+	zentinel.Agent
+	base *BaseAgentV2
+}
+
+func (a *upgradedAgent) Capabilities() *AgentCapabilities { return a.base.Capabilities() }
+func (a *upgradedAgent) HealthCheck(ctx context.Context) *HealthStatus {
+	return a.base.HealthCheck(ctx)
+}
+func (a *upgradedAgent) Metrics(ctx context.Context) *MetricsReport { return a.base.Metrics(ctx) }
+func (a *upgradedAgent) OnShutdown(ctx context.Context)             {}
+func (a *upgradedAgent) OnDrain(ctx context.Context)                {}
+func (a *upgradedAgent) OnStreamClosed(ctx context.Context, streamID string) {
+}
+func (a *upgradedAgent) OnCancel(ctx context.Context, correlationID string) {}

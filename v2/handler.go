@@ -2,595 +2,218 @@ package v2
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"sync"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
-// AgentHandlerV2 handles v2 protocol events and routes them to the agent.
+// requestStateTTL bounds how long the handler remembers a request whose end
+// it never saw (an agent that does not subscribe to request_complete).
+const requestStateTTL = 10 * time.Minute
+
+type requestState struct {
+	request      *zentinel.Request
+	body         []byte
+	response     *zentinel.ResponseHeadersEvent
+	responseBody []byte
+	cancel       context.CancelFunc
+	touched      time.Time
+}
+
+// AgentHandlerV2 routes protocol events to an AgentV2, independent of the
+// transport. One handler serves all connections of a runner: the proxy pools
+// connections and may deliver a request's events on different ones.
 type AgentHandlerV2 struct {
-	agent AgentV2
-
-	// Request state tracking
-	requests       map[uint64]*zentinel.Request
-	requestBodies  map[uint64][]byte
-	responseBodies map[uint64][]byte
-	responseEvents map[uint64]*V2ResponseHeaders
-	mu             sync.RWMutex
-
-	// Metrics tracking
+	agent   AgentV2
 	metrics *MetricsCollector
 
-	// Cancellation
-	cancelFuncs map[uint64]context.CancelFunc
-	cancelMu    sync.Mutex
+	mu        sync.Mutex
+	requests  map[string]*requestState
+	lastSweep time.Time
 }
 
-// NewAgentHandlerV2 creates a new v2 handler for the given agent.
+// NewAgentHandlerV2 creates a handler for agent.
 func NewAgentHandlerV2(agent AgentV2) *AgentHandlerV2 {
 	return &AgentHandlerV2{
-		agent:          agent,
-		requests:       make(map[uint64]*zentinel.Request),
-		requestBodies:  make(map[uint64][]byte),
-		responseBodies: make(map[uint64][]byte),
-		responseEvents: make(map[uint64]*V2ResponseHeaders),
-		metrics:        NewMetricsCollector(),
-		cancelFuncs:    make(map[uint64]context.CancelFunc),
+		agent:     agent,
+		metrics:   NewMetricsCollector(),
+		requests:  make(map[string]*requestState),
+		lastSweep: time.Now(),
 	}
 }
 
-// HandleMessage handles an incoming v2 protocol message.
-func (h *AgentHandlerV2) HandleMessage(ctx context.Context, msg *V2Message) (*V2Message, error) {
-	switch msg.Type {
-	case MsgTypeHandshakeRequest:
-		return h.handleHandshake(ctx, msg)
-	case MsgTypeRequestHeaders:
-		return h.handleRequestHeaders(ctx, msg)
-	case MsgTypeRequestBodyChunk:
-		return h.handleRequestBodyChunk(ctx, msg)
-	case MsgTypeResponseHeaders:
-		return h.handleResponseHeaders(ctx, msg)
-	case MsgTypeResponseBodyChunk:
-		return h.handleResponseBodyChunk(ctx, msg)
-	case MsgTypeCancelRequest:
-		return h.handleCancelRequest(ctx, msg)
-	case MsgTypeCancelAll:
-		return h.handleCancelAll(ctx, msg)
-	case MsgTypePing:
-		return h.handlePing(ctx, msg)
-	case MsgTypeHealthRequest:
-		return h.handleHealthRequest(ctx, msg)
-	case MsgTypeMetricsRequest:
-		return h.handleMetricsRequest(ctx, msg)
-	default:
-		log.Warn().Str("type", msg.TypeName()).Msg("Unknown v2 message type")
-		return h.buildAllowDecision(0)
+// Agent returns the agent this handler serves.
+func (h *AgentHandlerV2) Agent() AgentV2 { return h.agent }
+
+// state returns the state of a request, creating it if needed. The caller
+// holds h.mu.
+func (h *AgentHandlerV2) state(correlationID string) *requestState {
+	now := time.Now()
+	if now.Sub(h.lastSweep) > time.Minute {
+		for id, st := range h.requests {
+			if now.Sub(st.touched) > requestStateTTL {
+				delete(h.requests, id)
+			}
+		}
+		h.lastSweep = now
 	}
+	st, ok := h.requests[correlationID]
+	if !ok {
+		// A body or response event for a request whose headers this agent
+		// did not see: give the agent a request that carries at least the
+		// correlation id rather than skipping its handler.
+		st = &requestState{request: zentinel.NewRequest(&zentinel.RequestHeadersEvent{
+			Metadata: zentinel.RequestMetadata{CorrelationID: correlationID, RequestID: correlationID},
+			Headers:  map[string][]string{},
+		}, nil)}
+		h.requests[correlationID] = st
+	}
+	st.touched = now
+	return st
 }
 
-func (h *AgentHandlerV2) handleHandshake(ctx context.Context, msg *V2Message) (*V2Message, error) {
-	var req HandshakeRequest
-	if err := msg.ParsePayload(&req); err != nil {
-		log.Error().Err(err).Msg("Failed to parse handshake request")
-		resp := NewHandshakeResponseError(h.agent.Name(), "failed to parse handshake")
-		return NewV2Message(MsgTypeHandshakeResponse, resp)
+func (h *AgentHandlerV2) forget(correlationID string) {
+	h.mu.Lock()
+	if st, ok := h.requests[correlationID]; ok {
+		if st.cancel != nil {
+			st.cancel()
+		}
+		delete(h.requests, correlationID)
 	}
-
-	// Validate protocol version
-	if req.ProtocolVersion != ProtocolVersionV2 {
-		resp := NewHandshakeResponseError(h.agent.Name(), "unsupported protocol version")
-		return NewV2Message(MsgTypeHandshakeResponse, resp)
-	}
-
-	log.Info().
-		Str("client", req.ClientName).
-		Uint32("version", req.ProtocolVersion).
-		Msg("Handshake request received")
-
-	resp := NewHandshakeResponse(h.agent.Name(), h.agent.Capabilities())
-	return NewV2Message(MsgTypeHandshakeResponse, resp)
+	h.mu.Unlock()
 }
 
-func (h *AgentHandlerV2) handleRequestHeaders(ctx context.Context, msg *V2Message) (*V2Message, error) {
-	var headers V2RequestHeaders
-	if err := msg.ParsePayload(&headers); err != nil {
-		log.Error().Err(err).Msg("Failed to parse request headers")
-		return h.buildAllowDecision(0)
-	}
-
-	startTime := time.Now()
-	h.metrics.IncrementActive()
-	defer h.metrics.DecrementActive()
-
-	// Create cancellable context
+func (h *AgentHandlerV2) requestContext(ctx context.Context, correlationID string) context.Context {
 	reqCtx, cancel := context.WithCancel(ctx)
-	h.cancelMu.Lock()
-	h.cancelFuncs[headers.RequestID] = cancel
-	h.cancelMu.Unlock()
-	defer func() {
-		h.cancelMu.Lock()
-		delete(h.cancelFuncs, headers.RequestID)
-		h.cancelMu.Unlock()
-	}()
-
-	// Convert to base format for agent interface compatibility
-	event := &zentinel.RequestHeadersEvent{
-		Metadata: zentinel.RequestMetadata{
-			CorrelationID: headers.Metadata.CorrelationID,
-			RequestID:     headers.Metadata.CorrelationID,
-			ClientIP:      headers.Metadata.ClientIP,
-			ClientPort:    headers.Metadata.ClientPort,
-			ServerName:    headers.Metadata.ServerName,
-			Protocol:      headers.Metadata.Protocol,
-			TLSVersion:    headers.Metadata.TLSVersion,
-			RouteID:       headers.Metadata.RouteID,
-			UpstreamID:    headers.Metadata.UpstreamID,
-			Traceparent:   headers.Metadata.Traceparent,
-		},
-		Method:  headers.Method,
-		URI:     headers.URI,
-		Headers: headers.Headers,
+	h.mu.Lock()
+	st := h.state(correlationID)
+	if st.cancel != nil {
+		st.cancel()
 	}
+	st.cancel = cancel
+	h.mu.Unlock()
+	return reqCtx
+}
 
+func isBlocking(resp zentinel.AgentResponse) bool {
+	return resp.Decision != "allow"
+}
+
+// Configure applies the agent's configuration (the Configure message).
+func (h *AgentHandlerV2) Configure(ctx context.Context, config map[string]interface{}) error {
+	if config == nil {
+		config = map[string]interface{}{}
+	}
+	return h.agent.OnConfigure(ctx, config)
+}
+
+// RequestHeaders handles a request-headers event.
+func (h *AgentHandlerV2) RequestHeaders(ctx context.Context, event *zentinel.RequestHeadersEvent) zentinel.AgentResponse {
+	if event.Headers == nil {
+		event.Headers = map[string][]string{}
+	}
+	cid := event.Metadata.CorrelationID
 	request := zentinel.NewRequest(event, nil)
 
-	// Cache request for response correlation
 	h.mu.Lock()
-	h.requests[headers.RequestID] = request
-	h.requestBodies[headers.RequestID] = []byte{}
+	st := h.state(cid)
+	st.request = request
+	st.body = nil
 	h.mu.Unlock()
 
-	decision := h.agent.OnRequest(reqCtx, request)
-	elapsed := time.Since(startTime).Seconds() * 1000
+	start := time.Now()
+	h.metrics.IncrementActive()
+	resp := h.agent.OnRequest(h.requestContext(ctx, cid), request).Build()
+	h.metrics.DecrementActive()
+	h.metrics.RecordRequest(!isBlocking(resp), float64(time.Since(start).Microseconds())/1000)
 
-	// Record metrics
-	response := decision.Build()
-	isAllowed := response.Decision == "allow"
-	h.metrics.RecordRequest(isAllowed, elapsed)
-
-	return h.buildDecisionMessage(headers.RequestID, decision)
+	if isBlocking(resp) {
+		h.forget(cid)
+	}
+	return resp
 }
 
-func (h *AgentHandlerV2) handleRequestBodyChunk(ctx context.Context, msg *V2Message) (*V2Message, error) {
-	var chunk V2RequestBodyChunk
-	if err := msg.ParsePayload(&chunk); err != nil {
-		log.Error().Err(err).Msg("Failed to parse request body chunk")
-		return h.buildAllowDecision(0)
-	}
-
-	data, err := base64.StdEncoding.DecodeString(chunk.Data)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to decode body chunk data")
-		return h.buildAllowDecision(chunk.RequestID)
-	}
-
-	// Accumulate body chunks
+// RequestBodyChunk handles one chunk of the request body. The agent's
+// OnRequestBody sees the whole body, on the last chunk; earlier chunks are
+// answered with allow + needs_more.
+func (h *AgentHandlerV2) RequestBodyChunk(ctx context.Context, correlationID string, data []byte, isLast bool) zentinel.AgentResponse {
 	h.mu.Lock()
-	h.requestBodies[chunk.RequestID] = append(h.requestBodies[chunk.RequestID], data...)
-	body := h.requestBodies[chunk.RequestID]
-	request := h.requests[chunk.RequestID]
+	st := h.state(correlationID)
+	st.body = append(st.body, data...)
+	body := st.body
+	request := st.request
 	h.mu.Unlock()
 
-	// Only call handler on last chunk
-	if chunk.IsLast && request != nil {
-		requestWithBody := request.WithBody(body)
-		decision := h.agent.OnRequestBody(ctx, requestWithBody)
-		return h.buildDecisionMessage(chunk.RequestID, decision)
+	if !isLast {
+		return zentinel.Allow().NeedsMoreData().Build()
 	}
-
-	// For non-final chunks, return allow with needs_more
-	return h.buildNeedsMoreDecision(chunk.RequestID)
+	resp := h.agent.OnRequestBody(ctx, request.WithBody(body)).Build()
+	if isBlocking(resp) {
+		h.forget(correlationID)
+	}
+	return resp
 }
 
-func (h *AgentHandlerV2) handleResponseHeaders(ctx context.Context, msg *V2Message) (*V2Message, error) {
-	var headers V2ResponseHeaders
-	if err := msg.ParsePayload(&headers); err != nil {
-		log.Error().Err(err).Msg("Failed to parse response headers")
-		return h.buildAllowDecision(0)
+// ResponseHeaders handles a response-headers event.
+func (h *AgentHandlerV2) ResponseHeaders(ctx context.Context, event *zentinel.ResponseHeadersEvent) zentinel.AgentResponse {
+	if event.Headers == nil {
+		event.Headers = map[string][]string{}
 	}
-
-	h.mu.RLock()
-	request := h.requests[headers.RequestID]
-	h.mu.RUnlock()
-
-	if request == nil {
-		log.Warn().Uint64("request_id", headers.RequestID).Msg("No cached request for request_id")
-		return h.buildAllowDecision(headers.RequestID)
-	}
-
-	// Convert to base format
-	event := &zentinel.ResponseHeadersEvent{
-		CorrelationID: request.CorrelationID(),
-		Status:        int(headers.StatusCode),
-		Headers:       headers.Headers,
-	}
-
-	response := zentinel.NewResponse(event, nil)
-
-	// Cache response event for body processing
 	h.mu.Lock()
-	h.responseEvents[headers.RequestID] = &headers
-	h.responseBodies[headers.RequestID] = []byte{}
+	st := h.state(event.CorrelationID)
+	st.response = event
+	st.responseBody = nil
+	request := st.request
 	h.mu.Unlock()
 
-	decision := h.agent.OnResponse(ctx, request, response)
-	return h.buildDecisionMessage(headers.RequestID, decision)
+	return h.agent.OnResponse(ctx, request, zentinel.NewResponse(event, nil)).Build()
 }
 
-func (h *AgentHandlerV2) handleResponseBodyChunk(ctx context.Context, msg *V2Message) (*V2Message, error) {
-	var chunk V2ResponseBodyChunk
-	if err := msg.ParsePayload(&chunk); err != nil {
-		log.Error().Err(err).Msg("Failed to parse response body chunk")
-		return h.buildAllowDecision(0)
-	}
-
-	data, err := base64.StdEncoding.DecodeString(chunk.Data)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to decode response body chunk data")
-		return h.buildAllowDecision(chunk.RequestID)
-	}
-
-	// Accumulate body chunks
+// ResponseBodyChunk handles one chunk of the response body, like
+// RequestBodyChunk.
+func (h *AgentHandlerV2) ResponseBodyChunk(ctx context.Context, correlationID string, data []byte, isLast bool) zentinel.AgentResponse {
 	h.mu.Lock()
-	h.responseBodies[chunk.RequestID] = append(h.responseBodies[chunk.RequestID], data...)
-	body := h.responseBodies[chunk.RequestID]
-	request := h.requests[chunk.RequestID]
-	responseEvent := h.responseEvents[chunk.RequestID]
+	st := h.state(correlationID)
+	st.responseBody = append(st.responseBody, data...)
+	body := st.responseBody
+	request := st.request
+	response := st.response
 	h.mu.Unlock()
 
-	// Only call handler on last chunk
-	if chunk.IsLast && request != nil && responseEvent != nil {
-		event := &zentinel.ResponseHeadersEvent{
-			CorrelationID: request.CorrelationID(),
-			Status:        int(responseEvent.StatusCode),
-			Headers:       responseEvent.Headers,
-		}
-		response := zentinel.NewResponse(event, body)
-
-		decision := h.agent.OnResponseBody(ctx, request, response)
-		return h.buildDecisionMessage(chunk.RequestID, decision)
+	if !isLast {
+		return zentinel.Allow().NeedsMoreData().Build()
 	}
-
-	return h.buildNeedsMoreDecision(chunk.RequestID)
+	if response == nil {
+		response = &zentinel.ResponseHeadersEvent{CorrelationID: correlationID, Headers: map[string][]string{}}
+	}
+	return h.agent.OnResponseBody(ctx, request, zentinel.NewResponse(response, body)).Build()
 }
 
-func (h *AgentHandlerV2) handleCancelRequest(ctx context.Context, msg *V2Message) (*V2Message, error) {
-	var cancel CancelRequestMessage
-	if err := msg.ParsePayload(&cancel); err != nil {
-		log.Error().Err(err).Msg("Failed to parse cancel request")
-		return nil, nil
-	}
-
-	log.Debug().Uint64("request_id", cancel.RequestID).Msg("Cancelling request")
-
-	// Cancel the context
-	h.cancelMu.Lock()
-	if cancelFunc, ok := h.cancelFuncs[cancel.RequestID]; ok {
-		cancelFunc()
-		delete(h.cancelFuncs, cancel.RequestID)
-	}
-	h.cancelMu.Unlock()
-
-	// Cleanup cached state
+// RequestComplete handles the end of a request and forgets its state.
+func (h *AgentHandlerV2) RequestComplete(ctx context.Context, event *zentinel.RequestCompleteEvent) zentinel.AgentResponse {
 	h.mu.Lock()
-	delete(h.requests, cancel.RequestID)
-	delete(h.requestBodies, cancel.RequestID)
-	delete(h.responseBodies, cancel.RequestID)
-	delete(h.responseEvents, cancel.RequestID)
+	st, ok := h.requests[event.CorrelationID]
 	h.mu.Unlock()
-
-	// Notify agent
-	h.agent.OnCancel(ctx, cancel.RequestID)
-
-	// No response for cancel
-	return nil, nil
+	if ok {
+		h.agent.OnRequestComplete(ctx, st.request, event.Status, event.DurationMS)
+	}
+	h.forget(event.CorrelationID)
+	return zentinel.Allow().Build()
 }
 
-func (h *AgentHandlerV2) handleCancelAll(ctx context.Context, msg *V2Message) (*V2Message, error) {
-	log.Debug().Msg("Cancelling all requests")
-
-	// Cancel all contexts
-	h.cancelMu.Lock()
-	for requestID, cancelFunc := range h.cancelFuncs {
-		cancelFunc()
-		h.agent.OnCancel(ctx, requestID)
-	}
-	h.cancelFuncs = make(map[uint64]context.CancelFunc)
-	h.cancelMu.Unlock()
-
-	// Cleanup all cached state
-	h.mu.Lock()
-	h.requests = make(map[uint64]*zentinel.Request)
-	h.requestBodies = make(map[uint64][]byte)
-	h.responseBodies = make(map[uint64][]byte)
-	h.responseEvents = make(map[uint64]*V2ResponseHeaders)
-	h.mu.Unlock()
-
-	// No response for cancel all
-	return nil, nil
+// GuardrailInspect handles a guardrail inspection.
+func (h *AgentHandlerV2) GuardrailInspect(ctx context.Context, event *zentinel.GuardrailInspectEvent) *zentinel.GuardrailResponse {
+	return h.agent.OnGuardrailInspect(ctx, event)
 }
 
-func (h *AgentHandlerV2) handlePing(ctx context.Context, msg *V2Message) (*V2Message, error) {
-	var ping PingMessage
-	if err := msg.ParsePayload(&ping); err != nil {
-		ping.Timestamp = time.Now().UnixNano()
-	}
-
-	pong := PongMessage{Timestamp: ping.Timestamp}
-	return NewV2Message(MsgTypePong, pong)
+// Cancel cancels the context of an in-flight request and tells the agent.
+func (h *AgentHandlerV2) Cancel(ctx context.Context, correlationID string) {
+	h.forget(correlationID)
+	h.agent.OnCancel(ctx, correlationID)
 }
 
-func (h *AgentHandlerV2) handleHealthRequest(ctx context.Context, msg *V2Message) (*V2Message, error) {
-	health := h.agent.HealthCheck(ctx)
-	return NewV2Message(MsgTypeHealthResponse, health)
-}
-
-func (h *AgentHandlerV2) handleMetricsRequest(ctx context.Context, msg *V2Message) (*V2Message, error) {
-	metrics := h.agent.Metrics(ctx)
-	return NewV2Message(MsgTypeMetricsResponse, metrics)
-}
-
-func (h *AgentHandlerV2) buildDecisionMessage(requestID uint64, decision *zentinel.Decision) (*V2Message, error) {
-	response := decision.Build()
-
-	v2Decision := V2Decision{
-		RequestID: requestID,
-		Decision:  response.Decision,
-	}
-
-	// Convert header operations
-	for _, op := range response.RequestHeaders {
-		v2Op := V2HeaderOp{
-			Operation: op.Operation,
-			Name:      op.Name,
-			Value:     op.Value,
-		}
-		v2Decision.RequestHeaders = append(v2Decision.RequestHeaders, v2Op)
-	}
-
-	for _, op := range response.ResponseHeaders {
-		v2Op := V2HeaderOp{
-			Operation: op.Operation,
-			Name:      op.Name,
-			Value:     op.Value,
-		}
-		v2Decision.ResponseHeaders = append(v2Decision.ResponseHeaders, v2Op)
-	}
-
-	// Add audit metadata
-	audit := make(map[string]interface{})
-	if len(response.Audit.Tags) > 0 {
-		audit["tags"] = response.Audit.Tags
-	}
-	if len(response.Audit.RuleIDs) > 0 {
-		audit["rule_ids"] = response.Audit.RuleIDs
-	}
-	if response.Audit.Confidence != nil {
-		audit["confidence"] = *response.Audit.Confidence
-	}
-	if len(response.Audit.ReasonCodes) > 0 {
-		audit["reason_codes"] = response.Audit.ReasonCodes
-	}
-	if len(response.Audit.Custom) > 0 {
-		audit["custom"] = response.Audit.Custom
-	}
-	if len(audit) > 0 {
-		v2Decision.Audit = audit
-	}
-
-	return NewV2Message(MsgTypeDecision, v2Decision)
-}
-
-func (h *AgentHandlerV2) buildAllowDecision(requestID uint64) (*V2Message, error) {
-	v2Decision := V2Decision{
-		RequestID: requestID,
-		Decision:  "allow",
-	}
-	return NewV2Message(MsgTypeDecision, v2Decision)
-}
-
-func (h *AgentHandlerV2) buildNeedsMoreDecision(requestID uint64) (*V2Message, error) {
-	v2Decision := V2Decision{
-		RequestID: requestID,
-		Decision: map[string]interface{}{
-			"needs_more": true,
-		},
-	}
-	return NewV2Message(MsgTypeDecision, v2Decision)
-}
-
-// Cleanup cleans up resources for a completed request.
-func (h *AgentHandlerV2) Cleanup(requestID uint64) {
-	h.mu.Lock()
-	delete(h.requests, requestID)
-	delete(h.requestBodies, requestID)
-	delete(h.responseBodies, requestID)
-	delete(h.responseEvents, requestID)
-	h.mu.Unlock()
-
-	h.cancelMu.Lock()
-	if cancelFunc, ok := h.cancelFuncs[requestID]; ok {
-		cancelFunc()
-		delete(h.cancelFuncs, requestID)
-	}
-	h.cancelMu.Unlock()
-}
-
-// HandleLegacyEvent handles a legacy protocol event for backward compatibility.
-func (h *AgentHandlerV2) HandleLegacyEvent(ctx context.Context, event map[string]interface{}) (interface{}, error) {
-	eventType, _ := event["event_type"].(string)
-	payload, _ := event["payload"].(map[string]interface{})
-
-	switch zentinel.EventType(eventType) {
-	case zentinel.EventTypeConfigure:
-		return h.handleLegacyConfigure(ctx, payload)
-	case zentinel.EventTypeRequestHeaders:
-		return h.handleLegacyRequestHeaders(ctx, payload)
-	case zentinel.EventTypeRequestBodyChunk:
-		return h.handleLegacyRequestBodyChunk(ctx, payload)
-	case zentinel.EventTypeResponseHeaders:
-		return h.handleLegacyResponseHeaders(ctx, payload)
-	case zentinel.EventTypeResponseBodyChunk:
-		return h.handleLegacyResponseBodyChunk(ctx, payload)
-	case zentinel.EventTypeRequestComplete:
-		return h.handleLegacyRequestComplete(ctx, payload)
-	default:
-		log.Warn().Str("event_type", eventType).Msg("Unknown legacy event type")
-		return zentinel.Allow().Build(), nil
-	}
-}
-
-func (h *AgentHandlerV2) handleLegacyConfigure(ctx context.Context, payload map[string]interface{}) (interface{}, error) {
-	config, _ := payload["config"].(map[string]interface{})
-	if err := h.agent.OnConfigure(ctx, config); err != nil {
-		return map[string]interface{}{"success": false, "error": err.Error()}, nil
-	}
-	return map[string]interface{}{"success": true}, nil
-}
-
-func (h *AgentHandlerV2) handleLegacyRequestHeaders(ctx context.Context, payload map[string]interface{}) (interface{}, error) {
-	jsonBytes, _ := json.Marshal(payload)
-	var event zentinel.RequestHeadersEvent
-	if err := json.Unmarshal(jsonBytes, &event); err != nil {
-		return zentinel.Allow().Build(), nil
-	}
-
-	request := zentinel.NewRequest(&event, nil)
-	correlationID := event.Metadata.CorrelationID
-
-	// Use correlation ID hash as request ID for legacy compatibility
-	requestID := hashString(correlationID)
-
-	h.mu.Lock()
-	h.requests[requestID] = request
-	h.requestBodies[requestID] = []byte{}
-	h.mu.Unlock()
-
-	decision := h.agent.OnRequest(ctx, request)
-	return decision.Build(), nil
-}
-
-func (h *AgentHandlerV2) handleLegacyRequestBodyChunk(ctx context.Context, payload map[string]interface{}) (interface{}, error) {
-	jsonBytes, _ := json.Marshal(payload)
-	var event zentinel.RequestBodyChunkEvent
-	if err := json.Unmarshal(jsonBytes, &event); err != nil {
-		return zentinel.Allow().Build(), nil
-	}
-
-	requestID := hashString(event.CorrelationID)
-	data, _ := event.DecodedData()
-
-	h.mu.Lock()
-	h.requestBodies[requestID] = append(h.requestBodies[requestID], data...)
-	body := h.requestBodies[requestID]
-	request := h.requests[requestID]
-	h.mu.Unlock()
-
-	if event.IsLast && request != nil {
-		requestWithBody := request.WithBody(body)
-		decision := h.agent.OnRequestBody(ctx, requestWithBody)
-		return decision.Build(), nil
-	}
-
-	return zentinel.Allow().NeedsMoreData().Build(), nil
-}
-
-func (h *AgentHandlerV2) handleLegacyResponseHeaders(ctx context.Context, payload map[string]interface{}) (interface{}, error) {
-	jsonBytes, _ := json.Marshal(payload)
-	var event zentinel.ResponseHeadersEvent
-	if err := json.Unmarshal(jsonBytes, &event); err != nil {
-		return zentinel.Allow().Build(), nil
-	}
-
-	requestID := hashString(event.CorrelationID)
-
-	h.mu.RLock()
-	request := h.requests[requestID]
-	h.mu.RUnlock()
-
-	if request == nil {
-		return zentinel.Allow().Build(), nil
-	}
-
-	response := zentinel.NewResponse(&event, nil)
-
-	h.mu.Lock()
-	h.responseEvents[requestID] = &V2ResponseHeaders{
-		RequestID:  requestID,
-		StatusCode: uint16(event.Status),
-		Headers:    event.Headers,
-	}
-	h.responseBodies[requestID] = []byte{}
-	h.mu.Unlock()
-
-	decision := h.agent.OnResponse(ctx, request, response)
-	return decision.Build(), nil
-}
-
-func (h *AgentHandlerV2) handleLegacyResponseBodyChunk(ctx context.Context, payload map[string]interface{}) (interface{}, error) {
-	jsonBytes, _ := json.Marshal(payload)
-	var event zentinel.ResponseBodyChunkEvent
-	if err := json.Unmarshal(jsonBytes, &event); err != nil {
-		return zentinel.Allow().Build(), nil
-	}
-
-	requestID := hashString(event.CorrelationID)
-	data, _ := event.DecodedData()
-
-	h.mu.Lock()
-	h.responseBodies[requestID] = append(h.responseBodies[requestID], data...)
-	body := h.responseBodies[requestID]
-	request := h.requests[requestID]
-	responseEvent := h.responseEvents[requestID]
-	h.mu.Unlock()
-
-	if event.IsLast && request != nil && responseEvent != nil {
-		zentinelEvent := &zentinel.ResponseHeadersEvent{
-			CorrelationID: request.CorrelationID(),
-			Status:        int(responseEvent.StatusCode),
-			Headers:       responseEvent.Headers,
-		}
-		response := zentinel.NewResponse(zentinelEvent, body)
-		decision := h.agent.OnResponseBody(ctx, request, response)
-		return decision.Build(), nil
-	}
-
-	return zentinel.Allow().NeedsMoreData().Build(), nil
-}
-
-func (h *AgentHandlerV2) handleLegacyRequestComplete(ctx context.Context, payload map[string]interface{}) (interface{}, error) {
-	jsonBytes, _ := json.Marshal(payload)
-	var event zentinel.RequestCompleteEvent
-	if err := json.Unmarshal(jsonBytes, &event); err != nil {
-		return map[string]interface{}{"success": true}, nil
-	}
-
-	requestID := hashString(event.CorrelationID)
-
-	h.mu.Lock()
-	request := h.requests[requestID]
-	delete(h.requests, requestID)
-	delete(h.requestBodies, requestID)
-	delete(h.responseBodies, requestID)
-	delete(h.responseEvents, requestID)
-	h.mu.Unlock()
-
-	if request != nil {
-		h.agent.OnRequestComplete(ctx, request, event.Status, event.DurationMS)
-	}
-
-	return map[string]interface{}{"success": true}, nil
-}
-
-// hashString creates a simple uint64 hash from a string.
-func hashString(s string) uint64 {
-	var h uint64 = 5381
-	for i := 0; i < len(s); i++ {
-		h = ((h << 5) + h) + uint64(s[i])
-	}
-	return h
+// Cleanup forgets the state kept for a request.
+func (h *AgentHandlerV2) Cleanup(correlationID string) {
+	h.forget(correlationID)
 }

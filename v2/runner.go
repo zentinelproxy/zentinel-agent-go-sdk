@@ -3,8 +3,8 @@ package v2
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -17,20 +17,19 @@ import (
 	"github.com/spf13/pflag"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+
+	zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 )
 
 // TransportType specifies the transport mechanism.
 type TransportType string
 
 const (
-	// TransportUDS uses Unix Domain Sockets (recommended for co-located agents).
+	// TransportUDS uses a Unix domain socket (recommended for co-located agents).
 	TransportUDS TransportType = "uds"
 
 	// TransportGRPC uses gRPC over HTTP/2 (for remote agents).
 	TransportGRPC TransportType = "grpc"
-
-	// TransportReverse uses reverse connections (agent connects to proxy).
-	TransportReverse TransportType = "reverse"
 )
 
 // RunnerConfigV2 contains configuration for the v2 agent runner.
@@ -44,11 +43,8 @@ type RunnerConfigV2 struct {
 	// SocketPath is the Unix socket path (for UDS transport).
 	SocketPath string
 
-	// GRPCAddress is the gRPC server address (for gRPC transport).
+	// GRPCAddress is the gRPC listen address, host:port (for gRPC transport).
 	GRPCAddress string
-
-	// ReverseAddress is the proxy address to connect to (for reverse transport).
-	ReverseAddress string
 
 	// TLSConfig for gRPC transport.
 	TLSConfig *tls.Config
@@ -59,63 +55,50 @@ type RunnerConfigV2 struct {
 	// LogLevel sets the log level.
 	LogLevel string
 
-	// ShutdownTimeout is the maximum time to wait for graceful shutdown.
+	// ShutdownTimeout is the maximum time OnShutdown may take.
 	ShutdownTimeout time.Duration
 
-	// DrainTimeout is the maximum time to wait for requests to drain.
+	// DrainTimeout is the maximum time to wait for in-flight requests on
+	// shutdown.
 	DrainTimeout time.Duration
-
-	// HealthCheckInterval is how often to run health checks.
-	HealthCheckInterval time.Duration
-
-	// ReverseReconnectInterval is how often to attempt reconnection (for reverse transport).
-	ReverseReconnectInterval time.Duration
-
-	// AuthToken for reverse connection authentication.
-	AuthToken string
 }
 
 // DefaultRunnerConfigV2 returns the default v2 runner configuration.
 func DefaultRunnerConfigV2() RunnerConfigV2 {
 	return RunnerConfigV2{
-		Name:                     "agent",
-		Transport:                TransportUDS,
-		SocketPath:               "/tmp/zentinel-agent.sock",
-		GRPCAddress:              "localhost:50051",
-		ReverseAddress:           "",
-		TLSConfig:                nil,
-		JSONLogs:                 false,
-		LogLevel:                 "info",
-		ShutdownTimeout:          30 * time.Second,
-		DrainTimeout:             10 * time.Second,
-		HealthCheckInterval:      10 * time.Second,
-		ReverseReconnectInterval: 5 * time.Second,
-		AuthToken:                "",
+		Name:            "agent",
+		Transport:       TransportUDS,
+		SocketPath:      "/tmp/zentinel-agent.sock",
+		GRPCAddress:     "127.0.0.1:50051",
+		LogLevel:        "info",
+		ShutdownTimeout: 30 * time.Second,
+		DrainTimeout:    5 * time.Second,
 	}
 }
 
-// AgentRunnerV2 runs an agent server with v2 protocol support.
+// AgentRunnerV2 runs an agent server speaking agent protocol v2.
 type AgentRunnerV2 struct {
 	agent    AgentV2
 	config   RunnerConfigV2
 	handler  *AgentHandlerV2
-	listener net.Listener
 	shutdown chan struct{}
-	draining bool
-	mu       sync.RWMutex
-	wg       sync.WaitGroup
+	stopOnce sync.Once
+
+	mu    sync.Mutex
+	conns map[net.Conn]struct{}
+	wg    sync.WaitGroup
 }
 
 // NewAgentRunnerV2 creates a new v2 runner for the given agent.
 func NewAgentRunnerV2(agent AgentV2) *AgentRunnerV2 {
 	config := DefaultRunnerConfigV2()
 	config.Name = agent.Name()
-
 	return &AgentRunnerV2{
 		agent:    agent,
 		config:   config,
 		handler:  NewAgentHandlerV2(agent),
 		shutdown: make(chan struct{}),
+		conns:    make(map[net.Conn]struct{}),
 	}
 }
 
@@ -125,40 +108,25 @@ func (r *AgentRunnerV2) WithName(name string) *AgentRunnerV2 {
 	return r
 }
 
-// WithSocket configures UDS transport with the given socket path.
+// WithSocket configures the Unix socket transport with the given path.
 func (r *AgentRunnerV2) WithSocket(path string) *AgentRunnerV2 {
 	r.config.Transport = TransportUDS
 	r.config.SocketPath = path
 	return r
 }
 
-// WithGRPC configures gRPC transport with the given address.
+// WithGRPC configures the gRPC transport on host:port.
 func (r *AgentRunnerV2) WithGRPC(address string) *AgentRunnerV2 {
 	r.config.Transport = TransportGRPC
 	r.config.GRPCAddress = address
 	return r
 }
 
-// WithGRPCTLS configures gRPC transport with TLS.
+// WithGRPCTLS configures the gRPC transport with TLS.
 func (r *AgentRunnerV2) WithGRPCTLS(address string, tlsConfig *tls.Config) *AgentRunnerV2 {
 	r.config.Transport = TransportGRPC
 	r.config.GRPCAddress = address
 	r.config.TLSConfig = tlsConfig
-	return r
-}
-
-// WithReverse configures reverse connection transport.
-func (r *AgentRunnerV2) WithReverse(proxyAddress string) *AgentRunnerV2 {
-	r.config.Transport = TransportReverse
-	r.config.ReverseAddress = proxyAddress
-	return r
-}
-
-// WithReverseAuth configures reverse connection with authentication.
-func (r *AgentRunnerV2) WithReverseAuth(proxyAddress, authToken string) *AgentRunnerV2 {
-	r.config.Transport = TransportReverse
-	r.config.ReverseAddress = proxyAddress
-	r.config.AuthToken = authToken
 	return r
 }
 
@@ -192,6 +160,14 @@ func (r *AgentRunnerV2) WithConfig(config RunnerConfigV2) *AgentRunnerV2 {
 	return r
 }
 
+// Handler returns the handler that routes protocol events to the agent.
+func (r *AgentRunnerV2) Handler() *AgentHandlerV2 { return r.handler }
+
+// Stop shuts the runner down, as SIGINT or SIGTERM do.
+func (r *AgentRunnerV2) Stop() {
+	r.stopOnce.Do(func() { close(r.shutdown) })
+}
+
 func (r *AgentRunnerV2) setupLogging() {
 	level, err := zerolog.ParseLevel(r.config.LogLevel)
 	if err != nil {
@@ -200,183 +176,146 @@ func (r *AgentRunnerV2) setupLogging() {
 	zerolog.SetGlobalLevel(level)
 
 	if r.config.JSONLogs {
-		log.Logger = zerolog.New(os.Stdout).With().
-			Timestamp().
-			Str("agent", r.config.Name).
-			Str("protocol", "v2").
-			Logger()
+		log.Logger = zerolog.New(os.Stdout).With().Timestamp().
+			Str("agent", r.config.Name).Str("protocol", "v2").Logger()
 	} else {
-		log.Logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout}).With().
-			Timestamp().
-			Str("agent", r.config.Name).
-			Logger()
+		log.Logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout}).With().Timestamp().
+			Str("agent", r.config.Name).Logger()
 	}
 }
 
-// Run starts the agent server.
+// Run starts the agent server and blocks until it is stopped.
 func (r *AgentRunnerV2) Run() error {
 	r.setupLogging()
+	log.Info().Str("transport", string(r.config.Transport)).Str("name", r.config.Name).
+		Msg("Starting agent (protocol v2)")
 
-	log.Info().
-		Str("transport", string(r.config.Transport)).
-		Str("name", r.config.Name).
-		Msg("Starting agent with v2 protocol")
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
+	go func() {
+		select {
+		case sig := <-sigChan:
+			log.Info().Str("signal", sig.String()).Msg("Shutdown signal received")
+			r.Stop()
+		case <-r.shutdown:
+		}
+	}()
 
+	var err error
 	switch r.config.Transport {
 	case TransportUDS:
-		return r.runUDS()
+		err = r.runUDS()
 	case TransportGRPC:
-		return r.runGRPC()
-	case TransportReverse:
-		return r.runReverse()
+		err = r.runGRPC()
 	default:
-		return fmt.Errorf("unsupported transport: %s", r.config.Transport)
+		err = fmt.Errorf("unsupported transport: %s", r.config.Transport)
 	}
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), r.config.ShutdownTimeout)
+	defer cancel()
+	r.agent.OnShutdown(ctx)
+	log.Info().Msg("Agent shutdown complete")
+	return nil
 }
 
 func (r *AgentRunnerV2) runUDS() error {
-	// Clean up existing socket
 	if _, err := os.Stat(r.config.SocketPath); err == nil {
 		if err := os.Remove(r.config.SocketPath); err != nil {
 			return fmt.Errorf("failed to remove existing socket: %w", err)
 		}
 	}
-
-	// Create listener
 	listener, err := net.Listen("unix", r.config.SocketPath)
 	if err != nil {
 		return fmt.Errorf("failed to listen on socket: %w", err)
 	}
-	r.listener = listener
-
-	// Set socket permissions
-	if err := os.Chmod(r.config.SocketPath, 0660); err != nil {
+	defer os.Remove(r.config.SocketPath)
+	if err := os.Chmod(r.config.SocketPath, 0o660); err != nil {
 		log.Warn().Err(err).Msg("Failed to set socket permissions")
 	}
-
-	// Set up signal handling
-	r.setupSignalHandling()
-
 	log.Info().Str("socket", r.config.SocketPath).Msg("Agent listening (UDS)")
 
-	// Accept connections
+	go func() {
+		<-r.shutdown
+		listener.Close()
+	}()
+
 	for {
-		conn, err := r.listener.Accept()
+		conn, err := listener.Accept()
 		if err != nil {
 			select {
 			case <-r.shutdown:
-				break
+				r.drain()
+				return nil
 			default:
-				log.Error().Err(err).Msg("Failed to accept connection")
-				continue
 			}
-			break
+			if errors.Is(err, net.ErrClosed) {
+				return nil
+			}
+			log.Error().Err(err).Msg("Failed to accept connection")
+			continue
 		}
-
+		r.mu.Lock()
+		r.conns[conn] = struct{}{}
+		r.mu.Unlock()
 		r.wg.Add(1)
-		go r.handleUDSConnection(conn)
-	}
-
-	// Wait for connections to drain
-	r.waitForDrain()
-
-	// Cleanup
-	os.Remove(r.config.SocketPath)
-	log.Info().Msg("Agent shutdown complete")
-
-	return nil
-}
-
-func (r *AgentRunnerV2) handleUDSConnection(conn net.Conn) {
-	defer r.wg.Done()
-	defer conn.Close()
-
-	streamID := fmt.Sprintf("uds-%s", conn.RemoteAddr().String())
-	ctx := context.Background()
-
-	// Perform handshake
-	if err := r.performHandshake(conn); err != nil {
-		log.Error().Err(err).Msg("Handshake failed")
-		return
-	}
-
-	log.Debug().Str("stream_id", streamID).Msg("Connection established")
-
-	for {
-		select {
-		case <-r.shutdown:
-			r.agent.OnStreamClosed(ctx, streamID)
-			return
-		default:
-		}
-
-		// Check if draining
-		r.mu.RLock()
-		draining := r.draining
-		r.mu.RUnlock()
-		if draining {
-			r.agent.OnStreamClosed(ctx, streamID)
-			return
-		}
-
-		msg, err := ReadMessageV2(conn)
-		if err != nil {
-			if err != io.EOF {
-				log.Error().Err(err).Msg("Failed to read message")
+		go func() {
+			defer r.wg.Done()
+			defer func() {
+				r.mu.Lock()
+				delete(r.conns, conn)
+				r.mu.Unlock()
+				conn.Close()
+			}()
+			streamID := fmt.Sprintf("uds-%p", conn)
+			if err := ServeUDSConn(context.Background(), conn, r.handler); err != nil {
+				select {
+				case <-r.shutdown:
+				default:
+					log.Warn().Err(err).Str("stream_id", streamID).Msg("Connection ended")
+				}
 			}
-			r.agent.OnStreamClosed(ctx, streamID)
-			return
-		}
-		if msg == nil {
-			r.agent.OnStreamClosed(ctx, streamID)
-			return
-		}
-
-		response, err := r.handler.HandleMessage(ctx, msg)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to handle message")
-			continue
-		}
-
-		// Some messages (like cancel) don't have responses
-		if response == nil {
-			continue
-		}
-
-		if err := WriteMessageV2(conn, response); err != nil {
-			log.Error().Err(err).Msg("Failed to write response")
-			r.agent.OnStreamClosed(ctx, streamID)
-			return
-		}
+			r.agent.OnStreamClosed(context.Background(), streamID)
+		}()
 	}
 }
 
-func (r *AgentRunnerV2) performHandshake(conn net.Conn) error {
-	// Read handshake request
-	msg, err := ReadMessageV2(conn)
-	if err != nil {
-		return fmt.Errorf("failed to read handshake: %w", err)
-	}
-	if msg == nil {
-		return fmt.Errorf("connection closed during handshake")
-	}
+// drain tells the agent, waits for connections to finish for up to
+// DrainTimeout, then closes the rest.
+func (r *AgentRunnerV2) drain() {
+	ctx, cancel := context.WithTimeout(context.Background(), r.config.DrainTimeout)
+	defer cancel()
+	r.agent.OnDrain(ctx)
 
-	if msg.Type != MsgTypeHandshakeRequest {
-		return fmt.Errorf("expected handshake request, got %s", msg.TypeName())
+	done := make(chan struct{})
+	go func() {
+		r.wg.Wait()
+		close(done)
+	}()
+	// The proxy keeps pooled connections open indefinitely, so idle ones are
+	// closed rather than waited for.
+	r.mu.Lock()
+	for conn := range r.conns {
+		if uc, ok := conn.(*net.UnixConn); ok {
+			_ = uc.CloseRead()
+		} else {
+			_ = conn.Close()
+		}
 	}
-
-	// Handle handshake
-	response, err := r.handler.HandleMessage(context.Background(), msg)
-	if err != nil {
-		return fmt.Errorf("handshake handling failed: %w", err)
+	r.mu.Unlock()
+	select {
+	case <-done:
+	case <-time.After(r.config.DrainTimeout):
+		log.Warn().Msg("Drain timeout reached, closing connections")
+		r.mu.Lock()
+		for conn := range r.conns {
+			conn.Close()
+		}
+		r.mu.Unlock()
 	}
-
-	// Send response
-	if err := WriteMessageV2(conn, response); err != nil {
-		return fmt.Errorf("failed to send handshake response: %w", err)
-	}
-
-	return nil
 }
 
 func (r *AgentRunnerV2) runGRPC() error {
@@ -386,270 +325,58 @@ func (r *AgentRunnerV2) runGRPC() error {
 	}
 
 	var opts []grpc.ServerOption
-
-	// Add JSON codec so the service can use JSON marshaling instead of protobuf.
-	// This allows the gRPC transport to work without protoc-generated code,
-	// while remaining wire-compatible with proto-based clients via JSON encoding.
-	opts = append(opts, grpc.ForceServerCodec(jsonCodec{}))
-
 	if r.config.TLSConfig != nil {
 		opts = append(opts, grpc.Creds(credentials.NewTLS(r.config.TLSConfig)))
 	}
-
-	grpcServer := grpc.NewServer(opts...)
-	registerAgentService(grpcServer, r)
-
-	// Set up signal handling
-	r.setupSignalHandling()
-
+	server := grpc.NewServer(opts...)
+	RegisterGRPCService(server, r.handler)
 	log.Info().Str("address", r.config.GRPCAddress).Msg("Agent listening (gRPC)")
 
 	go func() {
 		<-r.shutdown
-		log.Info().Msg("Stopping gRPC server...")
-		grpcServer.GracefulStop()
-	}()
-
-	if err := grpcServer.Serve(lis); err != nil {
-		select {
-		case <-r.shutdown:
-			// Expected shutdown after GracefulStop
-		default:
-			return fmt.Errorf("gRPC server error: %w", err)
-		}
-	}
-
-	// Wait for in-flight requests to drain
-	r.waitForDrain()
-
-	log.Info().Msg("Agent shutdown complete")
-	return nil
-}
-
-func (r *AgentRunnerV2) runReverse() error {
-	if r.config.ReverseAddress == "" {
-		return fmt.Errorf("reverse address not configured")
-	}
-
-	r.setupSignalHandling()
-
-	log.Info().Str("address", r.config.ReverseAddress).Msg("Connecting to proxy (reverse)")
-
-	for {
-		select {
-		case <-r.shutdown:
-			log.Info().Msg("Agent shutdown complete")
-			return nil
-		default:
-		}
-
-		// Connect to proxy
-		conn, err := r.connectReverse()
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to connect to proxy")
-			time.Sleep(r.config.ReverseReconnectInterval)
-			continue
-		}
-
-		// Handle connection
-		r.wg.Add(1)
-		r.handleReverseConnection(conn)
-		r.wg.Done()
-
-		// Reconnect after disconnection
-		select {
-		case <-r.shutdown:
-			log.Info().Msg("Agent shutdown complete")
-			return nil
-		default:
-			log.Info().Msg("Connection lost, reconnecting...")
-			time.Sleep(r.config.ReverseReconnectInterval)
-		}
-	}
-}
-
-func (r *AgentRunnerV2) connectReverse() (net.Conn, error) {
-	var conn net.Conn
-	var err error
-
-	// Determine if UDS or TCP
-	if r.config.ReverseAddress[0] == '/' {
-		conn, err = net.Dial("unix", r.config.ReverseAddress)
-	} else {
-		conn, err = net.Dial("tcp", r.config.ReverseAddress)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	// Send registration
-	reg := NewRegistrationRequest(r.config.Name, r.agent.Capabilities())
-	if r.config.AuthToken != "" {
-		reg.WithAuthToken(r.config.AuthToken)
-	}
-
-	regMsg, err := NewV2Message(MsgTypeRegistration, reg)
-	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("failed to create registration message: %w", err)
-	}
-
-	if err := WriteMessageV2(conn, regMsg); err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("failed to send registration: %w", err)
-	}
-
-	// Read registration response
-	respMsg, err := ReadMessageV2(conn)
-	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("failed to read registration response: %w", err)
-	}
-
-	if respMsg.Type != MsgTypeRegistrationAck {
-		conn.Close()
-		return nil, fmt.Errorf("expected registration ack, got %s", respMsg.TypeName())
-	}
-
-	var resp RegistrationResponse
-	if err := respMsg.ParsePayload(&resp); err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("failed to parse registration response: %w", err)
-	}
-
-	if !resp.Accepted {
-		conn.Close()
-		return nil, fmt.Errorf("registration rejected: %s", resp.Error)
-	}
-
-	log.Info().Str("assigned_id", resp.AssignedID).Msg("Registered with proxy")
-
-	return conn, nil
-}
-
-func (r *AgentRunnerV2) handleReverseConnection(conn net.Conn) {
-	defer conn.Close()
-
-	streamID := fmt.Sprintf("reverse-%s", conn.RemoteAddr().String())
-	ctx := context.Background()
-
-	log.Debug().Str("stream_id", streamID).Msg("Reverse connection established")
-
-	for {
-		select {
-		case <-r.shutdown:
-			r.agent.OnStreamClosed(ctx, streamID)
-			return
-		default:
-		}
-
-		msg, err := ReadMessageV2(conn)
-		if err != nil {
-			if err != io.EOF {
-				log.Error().Err(err).Msg("Failed to read message")
-			}
-			r.agent.OnStreamClosed(ctx, streamID)
-			return
-		}
-		if msg == nil {
-			r.agent.OnStreamClosed(ctx, streamID)
-			return
-		}
-
-		response, err := r.handler.HandleMessage(ctx, msg)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to handle message")
-			continue
-		}
-
-		if response == nil {
-			continue
-		}
-
-		if err := WriteMessageV2(conn, response); err != nil {
-			log.Error().Err(err).Msg("Failed to write response")
-			r.agent.OnStreamClosed(ctx, streamID)
-			return
-		}
-	}
-}
-
-func (r *AgentRunnerV2) setupSignalHandling() {
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigChan
-		log.Info().Str("signal", sig.String()).Msg("Shutdown signal received")
-
-		// Start drain
-		r.mu.Lock()
-		r.draining = true
-		r.mu.Unlock()
-
 		ctx, cancel := context.WithTimeout(context.Background(), r.config.DrainTimeout)
 		defer cancel()
 		r.agent.OnDrain(ctx)
-
-		// Close listener to stop accepting new connections
-		close(r.shutdown)
-		if r.listener != nil {
-			r.listener.Close()
+		stopped := make(chan struct{})
+		go func() {
+			server.GracefulStop()
+			close(stopped)
+		}()
+		select {
+		case <-stopped:
+		case <-ctx.Done():
+			server.Stop()
 		}
 	}()
-}
 
-func (r *AgentRunnerV2) waitForDrain() {
-	// Wait for drain timeout or all connections to close
-	done := make(chan struct{})
-	go func() {
-		r.wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		log.Info().Msg("All connections drained")
-	case <-time.After(r.config.DrainTimeout):
-		log.Warn().Msg("Drain timeout reached, forcing shutdown")
+	if err := server.Serve(lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+		return fmt.Errorf("gRPC server error: %w", err)
 	}
-
-	// Call shutdown hook
-	ctx, cancel := context.WithTimeout(context.Background(), r.config.ShutdownTimeout)
-	defer cancel()
-	r.agent.OnShutdown(ctx)
+	return nil
 }
 
 // ParseArgsV2 parses command line arguments and returns a v2 RunnerConfig.
 func ParseArgsV2() RunnerConfigV2 {
 	config := DefaultRunnerConfigV2()
+	grpcAddress := ""
 
-	pflag.StringVar(&config.SocketPath, "socket", config.SocketPath, "Unix socket path (for UDS transport)")
-	pflag.StringVar(&config.GRPCAddress, "grpc", "", "gRPC server address (enables gRPC transport)")
-	pflag.StringVar(&config.ReverseAddress, "reverse", "", "Proxy address for reverse connection")
+	pflag.StringVar(&config.SocketPath, "socket", config.SocketPath, "Unix socket path (UDS transport)")
+	pflag.StringVar(&grpcAddress, "grpc", "", "gRPC listen address, host:port (selects the gRPC transport)")
 	pflag.BoolVar(&config.JSONLogs, "json-logs", config.JSONLogs, "Enable JSON log format")
 	pflag.StringVar(&config.LogLevel, "log-level", config.LogLevel, "Log level (debug, info, warn, error)")
 	pflag.DurationVar(&config.ShutdownTimeout, "shutdown-timeout", config.ShutdownTimeout, "Shutdown timeout")
 	pflag.DurationVar(&config.DrainTimeout, "drain-timeout", config.DrainTimeout, "Drain timeout")
-	pflag.StringVar(&config.AuthToken, "auth-token", "", "Authentication token for reverse connections")
 	pflag.Parse()
 
-	// Determine transport based on flags
-	if config.ReverseAddress != "" {
-		config.Transport = TransportReverse
-	} else if config.GRPCAddress != "" {
+	if grpcAddress != "" {
 		config.Transport = TransportGRPC
-	} else {
-		config.Transport = TransportUDS
+		config.GRPCAddress = grpcAddress
 	}
-
 	return config
 }
 
-// RunAgentV2 is a convenience function to run an agent from main.
-// It parses command line arguments and runs the agent with v2 protocol.
-//
-// Example:
+// RunAgentV2 runs an agent from main: it parses --socket / --grpc and the
+// logging flags, and exits the process on error.
 //
 //	func main() {
 //	    v2.RunAgentV2(&MyAgent{})
@@ -657,10 +384,14 @@ func ParseArgsV2() RunnerConfigV2 {
 func RunAgentV2(agent AgentV2) {
 	config := ParseArgsV2()
 	config.Name = agent.Name()
-
-	runner := NewAgentRunnerV2(agent).WithConfig(config)
-
-	if err := runner.Run(); err != nil {
+	if err := NewAgentRunnerV2(agent).WithConfig(config).Run(); err != nil {
 		log.Fatal().Err(err).Msg("Agent failed")
 	}
+}
+
+// RunAgent runs an agent written against the root package's Agent interface
+// (with v2 defaults for capabilities, health and lifecycle hooks), like
+// RunAgentV2.
+func RunAgent(agent zentinel.Agent) {
+	RunAgentV2(Upgrade(agent))
 }

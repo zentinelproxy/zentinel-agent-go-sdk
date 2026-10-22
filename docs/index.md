@@ -29,6 +29,8 @@ import (
     "context"
 
     zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+
+    "github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 )
 
 type MyAgent struct {
@@ -50,7 +52,7 @@ func (a *MyAgent) OnRequest(ctx context.Context, request *zentinel.Request) *zen
 }
 
 func main() {
-    zentinel.RunAgent(&MyAgent{})
+    v2.RunAgent(&MyAgent{})
 }
 ```
 

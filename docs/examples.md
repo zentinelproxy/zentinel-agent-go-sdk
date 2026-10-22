@@ -13,6 +13,8 @@ import (
     "context"
 
     zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+
+    "github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 )
 
 type BlockingAgent struct {
@@ -42,7 +44,7 @@ func (a *BlockingAgent) OnRequest(ctx context.Context, request *zentinel.Request
 }
 
 func main() {
-    zentinel.RunAgent(NewBlockingAgent())
+    v2.RunAgent(NewBlockingAgent())
 }
 ```
 
@@ -57,6 +59,8 @@ import (
     "context"
 
     zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+
+    "github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 )
 
 type IPFilterAgent struct {
@@ -91,7 +95,7 @@ func (a *IPFilterAgent) OnRequest(ctx context.Context, request *zentinel.Request
 }
 
 func main() {
-    zentinel.RunAgent(NewIPFilterAgent())
+    v2.RunAgent(NewIPFilterAgent())
 }
 ```
 
@@ -108,6 +112,7 @@ import (
 
     "github.com/golang-jwt/jwt/v5"
     zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+    "github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 )
 
 type AuthAgent struct {
@@ -162,7 +167,7 @@ func (a *AuthAgent) OnRequest(ctx context.Context, request *zentinel.Request) *z
 }
 
 func main() {
-    zentinel.RunAgent(NewAuthAgent("your-secret-key"))
+    v2.RunAgent(NewAuthAgent("your-secret-key"))
 }
 ```
 
@@ -180,6 +185,8 @@ import (
     "time"
 
     zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+
+    "github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 )
 
 type RateLimitAgent struct {
@@ -234,7 +241,7 @@ func (a *RateLimitAgent) OnRequest(ctx context.Context, request *zentinel.Reques
 }
 
 func main() {
-    zentinel.RunAgent(NewRateLimitAgent())
+    v2.RunAgent(NewRateLimitAgent())
 }
 ```
 
@@ -249,6 +256,8 @@ import (
     "context"
 
     zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+
+    "github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 )
 
 type HeaderAgent struct {
@@ -280,7 +289,7 @@ func (a *HeaderAgent) OnResponse(ctx context.Context, request *zentinel.Request,
 }
 
 func main() {
-    zentinel.RunAgent(&HeaderAgent{})
+    v2.RunAgent(&HeaderAgent{})
 }
 ```
 
@@ -296,6 +305,8 @@ import (
     "fmt"
 
     zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+
+    "github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 )
 
 type Config struct {
@@ -351,7 +362,7 @@ func (a *ConfigurableBlocker) OnRequest(ctx context.Context, request *zentinel.R
 }
 
 func main() {
-    zentinel.RunAgent(NewConfigurableBlocker())
+    v2.RunAgent(NewConfigurableBlocker())
 }
 ```
 
@@ -367,6 +378,8 @@ import (
     "fmt"
 
     zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+
+    "github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 )
 
 type LoggingAgent struct {
@@ -395,7 +408,7 @@ func (a *LoggingAgent) OnRequestComplete(ctx context.Context, request *zentinel.
 }
 
 func main() {
-    zentinel.RunAgent(&LoggingAgent{})
+    v2.RunAgent(&LoggingAgent{})
 }
 ```
 
@@ -411,6 +424,8 @@ import (
     "strings"
 
     zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+
+    "github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 )
 
 type ContentTypeAgent struct {
@@ -459,7 +474,7 @@ func (a *ContentTypeAgent) OnRequest(ctx context.Context, request *zentinel.Requ
 }
 
 func main() {
-    zentinel.RunAgent(NewContentTypeAgent())
+    v2.RunAgent(NewContentTypeAgent())
 }
 ```
 
@@ -474,6 +489,8 @@ import (
     "context"
 
     zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+
+    "github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 )
 
 type RedirectAgent struct {
@@ -511,7 +528,7 @@ func (a *RedirectAgent) OnRequest(ctx context.Context, request *zentinel.Request
 }
 
 func main() {
-    zentinel.RunAgent(NewRedirectAgent())
+    v2.RunAgent(NewRedirectAgent())
 }
 ```
 
@@ -527,6 +544,8 @@ import (
     "strings"
 
     zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+
+    "github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 )
 
 type SecurityAgent struct {
@@ -575,6 +594,6 @@ func (a *SecurityAgent) OnRequest(ctx context.Context, request *zentinel.Request
 }
 
 func main() {
-    zentinel.RunAgent(NewSecurityAgent())
+    v2.RunAgent(NewSecurityAgent())
 }
 ```
