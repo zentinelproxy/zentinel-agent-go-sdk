@@ -11,6 +11,7 @@ import (
 	"fmt"
 
 	zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+	"github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 )
 
 // SimpleAgent is a simple example agent that blocks admin paths.
@@ -57,5 +58,5 @@ func (a *SimpleAgent) OnRequestComplete(ctx context.Context, request *zentinel.R
 }
 
 func main() {
-	zentinel.RunAgent(&SimpleAgent{})
+	v2.RunAgent(&SimpleAgent{})
 }

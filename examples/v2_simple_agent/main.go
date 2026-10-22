@@ -122,8 +122,8 @@ func (a *SimpleAgentV2) OnStreamClosed(ctx context.Context, streamID string) {
 }
 
 // OnCancel handles request cancellation.
-func (a *SimpleAgentV2) OnCancel(ctx context.Context, requestID uint64) {
-	fmt.Printf("Request cancelled: %d\n", requestID)
+func (a *SimpleAgentV2) OnCancel(ctx context.Context, correlationID string) {
+	fmt.Printf("Request cancelled: %s\n", correlationID)
 }
 
 func main() {

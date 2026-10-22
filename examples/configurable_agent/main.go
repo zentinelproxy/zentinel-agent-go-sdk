@@ -13,6 +13,7 @@ import (
 	"time"
 
 	zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+	"github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 )
 
 // RateLimitConfig is the configuration for the rate limiting agent.
@@ -116,5 +117,5 @@ func (a *RateLimitAgent) OnResponse(ctx context.Context, request *zentinel.Reque
 }
 
 func main() {
-	zentinel.RunAgent(NewRateLimitAgent())
+	v2.RunAgent(NewRateLimitAgent())
 }

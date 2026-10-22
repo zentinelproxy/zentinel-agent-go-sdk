@@ -62,3 +62,42 @@ jobs:
             echo "Run: gofmt -w ."
             exit 1
           fi
+
+  conformance:
+    # Unit tests passed here for months while no agent built with this SDK
+    # could complete a handshake with the proxy (zentinel#600). This job runs
+    # the shared conformance harness: a real zentinel binary, a fixture
+    # upstream, and this SDK's agents on the Unix socket and gRPC transports.
+    name: Conformance (agent protocol v2)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build the agents
+        run: |
+          go build -o "$RUNNER_TEMP/conformance-agent" ./examples/conformance
+          go build -o "$RUNNER_TEMP/hello-agent" ./examples/hello
+
+      # The configure check needs zentinel#603, which no release includes
+      # yet, so zentinel is built from main. Switch to
+      # `zentinel-version: <first release with #603>` once it ships.
+      - name: Conformance agent (UDS + gRPC)
+        uses: zentinelproxy/zentinel/sdk-conformance@sdk/conformance-harness
+        with:
+          zentinel-ref: main
+          agent-command: ${{ runner.temp }}/conformance-agent --socket {socket}
+          grpc-agent-command: ${{ runner.temp }}/conformance-agent --grpc {grpc}
+
+      - name: README quick-start agent
+        uses: zentinelproxy/zentinel/sdk-conformance@sdk/conformance-harness
+        with:
+          zentinel-ref: main
+          profile: hello
+          agent-command: ${{ runner.temp }}/hello-agent --socket {socket}

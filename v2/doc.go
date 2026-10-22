@@ -1,13 +1,17 @@
 // Package v2 provides the v2 protocol implementation for Zentinel agents.
 //
-// The v2 protocol adds support for:
-//   - Bidirectional streaming
-//   - Request cancellation
-//   - Multiple transports (gRPC and UDS)
-//   - Reverse connections (agent-initiated)
-//   - Connection pooling
-//   - Health checking and metrics
-//   - Capability negotiation via handshake
+// Agents run on one of two transports, both speaking agent protocol v2 as
+// the proxy implements it (zentinel-agent-protocol):
+//   - Unix domain socket: length-prefixed JSON frames with a message-type
+//     byte (ServeUDSConn).
+//   - gRPC: the zentinel.agent.v2.AgentServiceV2 service with the protobuf
+//     codec (RegisterGRPCService).
+//
+// On every connection the proxy sends a handshake, then the agent's
+// `config { }` block as a Configure message, which reaches
+// Agent.OnConfigure. Returning an error rejects the configuration and the
+// proxy does not use the connection. OnConfigure runs once per connection
+// (the proxy pools connections and reconnects), so it must be idempotent.
 //
 // # Quick Start
 //
@@ -39,7 +43,7 @@
 //	    // UDS transport (recommended for co-located agents)
 //	    v2.RunAgentV2(agent)
 //
-//	    // Or with gRPC transport
+//	    // Or with the gRPC transport
 //	    runner := v2.NewAgentRunnerV2(agent).
 //	        WithGRPC("localhost:50051")
 //	    runner.Run()
@@ -63,7 +67,6 @@
 //
 // # Transport Options
 //
-//   - UDS (Unix Domain Socket): Best for co-located agents, ~0.4ms latency
-//   - gRPC: For remote agents or cross-network, ~1.2ms latency
-//   - Reverse Connections: For agents behind NAT/firewalls
+//   - UDS (Unix domain socket): for agents on the proxy's host.
+//   - gRPC: for remote agents.
 package v2

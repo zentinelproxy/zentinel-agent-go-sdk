@@ -14,7 +14,7 @@ type TestAgentV2Impl struct {
 	onShutdownCalled  bool
 	onDrainCalled     bool
 	onStreamClosedID  string
-	onCancelRequestID uint64
+	onCancelRequestID string
 }
 
 func (a *TestAgentV2Impl) Name() string {
@@ -48,8 +48,8 @@ func (a *TestAgentV2Impl) OnStreamClosed(ctx context.Context, streamID string) {
 	a.onStreamClosedID = streamID
 }
 
-func (a *TestAgentV2Impl) OnCancel(ctx context.Context, requestID uint64) {
-	a.onCancelRequestID = requestID
+func (a *TestAgentV2Impl) OnCancel(ctx context.Context, correlationID string) {
+	a.onCancelRequestID = correlationID
 }
 
 func TestBaseAgentV2_Defaults(t *testing.T) {
@@ -164,9 +164,9 @@ func TestTestAgentV2_LifecycleHooks(t *testing.T) {
 	}
 
 	// Test OnCancel
-	agent.OnCancel(ctx, 456)
-	if agent.onCancelRequestID != 456 {
-		t.Errorf("expected request ID 456, got %d", agent.onCancelRequestID)
+	agent.OnCancel(ctx, "req-456")
+	if agent.onCancelRequestID != "req-456" {
+		t.Errorf("expected request ID req-456, got %s", agent.onCancelRequestID)
 	}
 }
 
@@ -297,5 +297,5 @@ func TestConfigurableAgentV2_LifecycleHooks(t *testing.T) {
 	agent.OnShutdown(ctx)
 	agent.OnDrain(ctx)
 	agent.OnStreamClosed(ctx, "stream-1")
-	agent.OnCancel(ctx, 123)
+	agent.OnCancel(ctx, "req-123")
 }

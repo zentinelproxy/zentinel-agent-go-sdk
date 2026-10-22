@@ -2,17 +2,17 @@ package zentinel
 
 import (
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
-	"fmt"
-	"io"
 )
+
+// Version is the version of this SDK.
+const Version = "0.3.0"
 
 // ProtocolVersion is the version of the Zentinel agent protocol.
 const ProtocolVersion = 2
 
-// MaxMessageSize is the maximum message size for the v1 JSON protocol (10MB).
-// Deprecated: V2 uses MaxUdsMessageSize (16 MB) or MaxGrpcMessageSize (10 MB).
+// MaxMessageSize is the largest message the gRPC transport accepts (10 MB).
+// The Unix socket transport accepts up to 16 MB (v2.MaxMessageSizeV2).
 const MaxMessageSize = 10 * 1024 * 1024
 
 // EventType represents the type of event sent from proxy to agent.
@@ -103,7 +103,7 @@ type ResponseBodyChunkEvent struct {
 	ChunkIndex    int    `json:"chunk_index"`
 	IsLast        bool   `json:"is_last"`
 	TotalSize     *int   `json:"total_size,omitempty"`
-	BytesReceived int    `json:"bytes_received"`
+	BytesSent     int    `json:"bytes_sent"`
 }
 
 // DecodedData returns the decoded body data.
@@ -116,21 +116,25 @@ func (e *ResponseBodyChunkEvent) DecodedData() ([]byte, error) {
 
 // RequestCompleteEvent indicates request processing is complete.
 type RequestCompleteEvent struct {
-	CorrelationID string  `json:"correlation_id"`
-	Status        int     `json:"status"`
-	DurationMS    int     `json:"duration_ms"`
-	RequestSize   int     `json:"request_size"`
-	ResponseSize  int     `json:"response_size"`
-	Error         *string `json:"error,omitempty"`
+	CorrelationID    string  `json:"correlation_id"`
+	Status           int     `json:"status"`
+	DurationMS       int     `json:"duration_ms"`
+	RequestBodySize  int     `json:"request_body_size"`
+	ResponseBodySize int     `json:"response_body_size"`
+	UpstreamAttempts int     `json:"upstream_attempts"`
+	Error            *string `json:"error,omitempty"`
 }
 
 // WebSocketFrameEvent represents a WebSocket frame.
 type WebSocketFrameEvent struct {
-	CorrelationID string `json:"correlation_id"`
-	Opcode        int    `json:"opcode"`
-	Data          string `json:"data"` // Base64-encoded
-	Direction     string `json:"direction"`
-	FrameIndex    int    `json:"frame_index"`
+	CorrelationID  string  `json:"correlation_id"`
+	Opcode         string  `json:"opcode"`
+	Data           string  `json:"data"` // Base64-encoded
+	ClientToServer bool    `json:"client_to_server"`
+	FrameIndex     int     `json:"frame_index"`
+	Fin            bool    `json:"fin"`
+	RouteID        *string `json:"route_id,omitempty"`
+	ClientIP       string  `json:"client_ip"`
 }
 
 // DecodedData returns the decoded frame data.
@@ -141,10 +145,11 @@ func (e *WebSocketFrameEvent) DecodedData() ([]byte, error) {
 	return base64.StdEncoding.DecodeString(e.Data)
 }
 
-// ConfigureEvent contains agent configuration.
+// ConfigureEvent is the payload of the Configure message the proxy sends
+// right after the handshake: the agent's `config { }` block as JSON.
 type ConfigureEvent struct {
-	AgentID string                 `json:"agent_id"`
-	Config  map[string]interface{} `json:"config"`
+	Config        map[string]interface{} `json:"config"`
+	ConfigVersion *string                `json:"config_version,omitempty"`
 }
 
 // TextSpan represents a span of text with start and end positions.
@@ -311,60 +316,4 @@ func NewAllowResponse() AgentResponse {
 		RoutingMetadata: map[string]string{},
 		Audit:           AuditMetadata{},
 	}
-}
-
-// ReadMessage reads a length-prefixed message from a reader.
-func ReadMessage(r io.Reader) (map[string]interface{}, error) {
-	// Read length prefix (4 bytes, big-endian)
-	lengthBuf := make([]byte, 4)
-	if _, err := io.ReadFull(r, lengthBuf); err != nil {
-		if err == io.EOF {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to read message length: %w", err)
-	}
-
-	length := binary.BigEndian.Uint32(lengthBuf)
-	if length > MaxMessageSize {
-		return nil, fmt.Errorf("message size %d exceeds maximum %d", length, MaxMessageSize)
-	}
-
-	// Read message body
-	msgBuf := make([]byte, length)
-	if _, err := io.ReadFull(r, msgBuf); err != nil {
-		return nil, fmt.Errorf("failed to read message body: %w", err)
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(msgBuf, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse message JSON: %w", err)
-	}
-
-	return result, nil
-}
-
-// WriteMessage writes a length-prefixed message to a writer.
-func WriteMessage(w io.Writer, data interface{}) error {
-	jsonBytes, err := json.Marshal(data)
-	if err != nil {
-		return fmt.Errorf("failed to marshal response: %w", err)
-	}
-
-	if len(jsonBytes) > MaxMessageSize {
-		return fmt.Errorf("message size %d exceeds maximum %d", len(jsonBytes), MaxMessageSize)
-	}
-
-	// Write length prefix
-	lengthBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(lengthBuf, uint32(len(jsonBytes)))
-
-	if _, err := w.Write(lengthBuf); err != nil {
-		return fmt.Errorf("failed to write message length: %w", err)
-	}
-
-	if _, err := w.Write(jsonBytes); err != nil {
-		return fmt.Errorf("failed to write message body: %w", err)
-	}
-
-	return nil
 }

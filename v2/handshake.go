@@ -1,216 +1,94 @@
 package v2
 
-import (
-	"encoding/json"
-)
-
 // ProtocolVersionV2 is the v2 protocol version.
 const ProtocolVersionV2 = 2
 
-// HandshakeRequest is sent by the proxy to initiate the v2 handshake.
+// HandshakeRequest is the first message the proxy sends on a Unix socket
+// connection (zentinel-agent-protocol UdsHandshakeRequest).
 type HandshakeRequest struct {
-	// ProtocolVersion must be 2 for v2 protocol.
-	ProtocolVersion uint32 `json:"protocol_version"`
-
-	// ClientName identifies the connecting proxy.
-	ClientName string `json:"client_name"`
-
-	// SupportedFeatures lists features the proxy supports.
-	SupportedFeatures []string `json:"supported_features,omitempty"`
+	SupportedVersions []uint32 `json:"supported_versions"`
+	ProxyID           string   `json:"proxy_id"`
+	ProxyVersion      string   `json:"proxy_version"`
+	// Config is the agent's `config { }` block. The proxy also sends it as a
+	// Configure message right after the handshake, which is what reaches
+	// Agent.OnConfigure; the runner does not apply this copy.
+	Config             interface{} `json:"config"`
+	SupportedEncodings []string    `json:"supported_encodings,omitempty"`
 }
 
-// HandshakeResponse is sent by the agent in response to HandshakeRequest.
+// HandshakeResponse is the agent's answer (UdsHandshakeResponse). Every
+// field is required by the proxy.
 type HandshakeResponse struct {
-	// ProtocolVersion confirms the protocol version.
-	ProtocolVersion uint32 `json:"protocol_version"`
-
-	// AgentName identifies this agent.
-	AgentName string `json:"agent_name"`
-
-	// Capabilities describes what the agent can process.
-	Capabilities *AgentCapabilities `json:"capabilities"`
-
-	// Error is set if the handshake failed.
-	Error string `json:"error,omitempty"`
-
-	// Accepted indicates whether the handshake was accepted.
-	Accepted bool `json:"accepted"`
+	ProtocolVersion uint32          `json:"protocol_version"`
+	Capabilities    UdsCapabilities `json:"capabilities"`
+	Success         bool            `json:"success"`
+	Error           *string         `json:"error"`
+	// Encoding is the payload encoding for the rest of the connection. This
+	// SDK speaks JSON only.
+	Encoding string `json:"encoding"`
 }
 
-// NewHandshakeRequest creates a new handshake request.
-func NewHandshakeRequest(clientName string) *HandshakeRequest {
-	return &HandshakeRequest{
-		ProtocolVersion:   ProtocolVersionV2,
-		ClientName:        clientName,
-		SupportedFeatures: []string{},
-	}
+// UdsCapabilities is the capability block of the handshake response.
+type UdsCapabilities struct {
+	AgentID         string      `json:"agent_id"`
+	Name            string      `json:"name"`
+	Version         string      `json:"version"`
+	SupportedEvents []int32     `json:"supported_events"`
+	Features        UdsFeatures `json:"features"`
+	Limits          UdsLimits   `json:"limits"`
 }
 
-// WithFeature adds a supported feature to the handshake request.
-func (r *HandshakeRequest) WithFeature(feature string) *HandshakeRequest {
-	r.SupportedFeatures = append(r.SupportedFeatures, feature)
-	return r
+// UdsFeatures lists the optional protocol features an agent supports.
+type UdsFeatures struct {
+	StreamingBody      bool   `json:"streaming_body"`
+	Websocket          bool   `json:"websocket"`
+	Guardrails         bool   `json:"guardrails"`
+	ConfigPush         bool   `json:"config_push"`
+	MetricsExport      bool   `json:"metrics_export"`
+	ConcurrentRequests uint32 `json:"concurrent_requests"`
+	Cancellation       bool   `json:"cancellation"`
+	FlowControl        bool   `json:"flow_control"`
+	HealthReporting    bool   `json:"health_reporting"`
 }
 
-// WithFeatures adds multiple supported features to the handshake request.
-func (r *HandshakeRequest) WithFeatures(features ...string) *HandshakeRequest {
-	r.SupportedFeatures = append(r.SupportedFeatures, features...)
-	return r
+// UdsLimits are the agent's processing limits.
+type UdsLimits struct {
+	MaxBodySize        uint64 `json:"max_body_size"`
+	MaxConcurrency     uint32 `json:"max_concurrency"`
+	PreferredChunkSize uint64 `json:"preferred_chunk_size"`
 }
 
-// NewHandshakeResponse creates an accepted handshake response.
-func NewHandshakeResponse(agentName string, capabilities *AgentCapabilities) *HandshakeResponse {
+// NewHandshakeResponse creates an accepting handshake response.
+func NewHandshakeResponse(caps UdsCapabilities) *HandshakeResponse {
 	return &HandshakeResponse{
 		ProtocolVersion: ProtocolVersionV2,
-		AgentName:       agentName,
-		Capabilities:    capabilities,
-		Accepted:        true,
+		Capabilities:    caps,
+		Success:         true,
+		Encoding:        "json",
 	}
 }
 
-// NewHandshakeResponseError creates a rejected handshake response.
-func NewHandshakeResponseError(agentName string, err string) *HandshakeResponse {
+// NewHandshakeResponseError creates a rejecting handshake response.
+func NewHandshakeResponseError(caps UdsCapabilities, err string) *HandshakeResponse {
 	return &HandshakeResponse{
 		ProtocolVersion: ProtocolVersionV2,
-		AgentName:       agentName,
-		Capabilities:    nil,
-		Accepted:        false,
-		Error:           err,
+		Capabilities:    caps,
+		Success:         false,
+		Error:           &err,
+		Encoding:        "json",
 	}
 }
 
-// RegistrationRequest is sent by an agent initiating a reverse connection.
-type RegistrationRequest struct {
-	// ProtocolVersion must be 2 for v2 protocol.
-	ProtocolVersion uint32 `json:"protocol_version"`
-
-	// AgentID uniquely identifies this agent.
-	AgentID string `json:"agent_id"`
-
-	// Capabilities describes what the agent can process.
-	Capabilities *AgentCapabilities `json:"capabilities"`
-
-	// AuthToken is an optional authentication token.
-	AuthToken string `json:"auth_token,omitempty"`
-
-	// Metadata contains additional agent information.
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
-}
-
-// RegistrationResponse is sent by the proxy in response to RegistrationRequest.
-type RegistrationResponse struct {
-	// Accepted indicates whether the registration was accepted.
-	Accepted bool `json:"accepted"`
-
-	// Error is set if the registration was rejected.
-	Error string `json:"error,omitempty"`
-
-	// AssignedID is the proxy-assigned connection ID.
-	AssignedID string `json:"assigned_id,omitempty"`
-
-	// Config is optional configuration pushed by the proxy.
-	Config map[string]interface{} `json:"config,omitempty"`
-}
-
-// NewRegistrationRequest creates a new registration request.
-func NewRegistrationRequest(agentID string, capabilities *AgentCapabilities) *RegistrationRequest {
-	return &RegistrationRequest{
-		ProtocolVersion: ProtocolVersionV2,
-		AgentID:         agentID,
-		Capabilities:    capabilities,
-		Metadata:        make(map[string]interface{}),
+// supportsVersion reports whether the proxy offered protocol v2. An empty
+// list is taken as v2, the only version the proxy speaks.
+func (r *HandshakeRequest) supportsVersion() bool {
+	if len(r.SupportedVersions) == 0 {
+		return true
 	}
-}
-
-// WithAuthToken sets the authentication token.
-func (r *RegistrationRequest) WithAuthToken(token string) *RegistrationRequest {
-	r.AuthToken = token
-	return r
-}
-
-// WithMetadata sets a metadata key-value pair.
-func (r *RegistrationRequest) WithMetadata(key string, value interface{}) *RegistrationRequest {
-	if r.Metadata == nil {
-		r.Metadata = make(map[string]interface{})
+	for _, v := range r.SupportedVersions {
+		if v == ProtocolVersionV2 {
+			return true
+		}
 	}
-	r.Metadata[key] = value
-	return r
-}
-
-// NewRegistrationResponseAccepted creates an accepted registration response.
-func NewRegistrationResponseAccepted(assignedID string) *RegistrationResponse {
-	return &RegistrationResponse{
-		Accepted:   true,
-		AssignedID: assignedID,
-	}
-}
-
-// NewRegistrationResponseRejected creates a rejected registration response.
-func NewRegistrationResponseRejected(err string) *RegistrationResponse {
-	return &RegistrationResponse{
-		Accepted: false,
-		Error:    err,
-	}
-}
-
-// WithConfig adds configuration to the registration response.
-func (r *RegistrationResponse) WithConfig(config map[string]interface{}) *RegistrationResponse {
-	r.Config = config
-	return r
-}
-
-// MarshalHandshakeRequest marshals a HandshakeRequest to JSON.
-func MarshalHandshakeRequest(req *HandshakeRequest) ([]byte, error) {
-	return json.Marshal(req)
-}
-
-// UnmarshalHandshakeRequest unmarshals JSON to a HandshakeRequest.
-func UnmarshalHandshakeRequest(data []byte) (*HandshakeRequest, error) {
-	var req HandshakeRequest
-	if err := json.Unmarshal(data, &req); err != nil {
-		return nil, err
-	}
-	return &req, nil
-}
-
-// MarshalHandshakeResponse marshals a HandshakeResponse to JSON.
-func MarshalHandshakeResponse(resp *HandshakeResponse) ([]byte, error) {
-	return json.Marshal(resp)
-}
-
-// UnmarshalHandshakeResponse unmarshals JSON to a HandshakeResponse.
-func UnmarshalHandshakeResponse(data []byte) (*HandshakeResponse, error) {
-	var resp HandshakeResponse
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return nil, err
-	}
-	return &resp, nil
-}
-
-// MarshalRegistrationRequest marshals a RegistrationRequest to JSON.
-func MarshalRegistrationRequest(req *RegistrationRequest) ([]byte, error) {
-	return json.Marshal(req)
-}
-
-// UnmarshalRegistrationRequest unmarshals JSON to a RegistrationRequest.
-func UnmarshalRegistrationRequest(data []byte) (*RegistrationRequest, error) {
-	var req RegistrationRequest
-	if err := json.Unmarshal(data, &req); err != nil {
-		return nil, err
-	}
-	return &req, nil
-}
-
-// MarshalRegistrationResponse marshals a RegistrationResponse to JSON.
-func MarshalRegistrationResponse(resp *RegistrationResponse) ([]byte, error) {
-	return json.Marshal(resp)
-}
-
-// UnmarshalRegistrationResponse unmarshals JSON to a RegistrationResponse.
-func UnmarshalRegistrationResponse(data []byte) (*RegistrationResponse, error) {
-	var resp RegistrationResponse
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return nil, err
-	}
-	return &resp, nil
+	return false
 }

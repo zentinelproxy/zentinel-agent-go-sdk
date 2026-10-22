@@ -1,9 +1,7 @@
 package zentinel
 
 import (
-	"bytes"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"testing"
 )
@@ -558,84 +556,6 @@ func TestBodyMutationFormat_PassThrough(t *testing.T) {
 	}
 }
 
-// TestReadWriteMessage tests length-prefixed message I/O.
-func TestReadWriteMessage(t *testing.T) {
-	message := map[string]interface{}{
-		"version":    2,
-		"event_type": "request_headers",
-		"payload": map[string]interface{}{
-			"method": "GET",
-			"uri":    "/test",
-		},
-	}
-
-	// Write message to buffer
-	var buf bytes.Buffer
-	if err := WriteMessage(&buf, message); err != nil {
-		t.Fatalf("failed to write message: %v", err)
-	}
-
-	// Read message back
-	reader := bytes.NewReader(buf.Bytes())
-	read, err := ReadMessage(reader)
-	if err != nil {
-		t.Fatalf("failed to read message: %v", err)
-	}
-
-	if read["version"].(float64) != 2 {
-		t.Errorf("expected version 2, got %v", read["version"])
-	}
-	if read["event_type"] != "request_headers" {
-		t.Errorf("expected event_type 'request_headers', got %v", read["event_type"])
-	}
-
-	payload := read["payload"].(map[string]interface{})
-	if payload["method"] != "GET" {
-		t.Errorf("expected method 'GET', got %v", payload["method"])
-	}
-}
-
-func TestReadMessage_EOF(t *testing.T) {
-	// Empty reader
-	reader := bytes.NewReader([]byte{})
-	read, err := ReadMessage(reader)
-
-	if err != nil {
-		t.Errorf("expected nil error on EOF, got %v", err)
-	}
-	if read != nil {
-		t.Errorf("expected nil message on EOF, got %v", read)
-	}
-}
-
-func TestReadMessage_TooLarge(t *testing.T) {
-	// Create a length prefix that exceeds max
-	var buf bytes.Buffer
-	binary.Write(&buf, binary.BigEndian, uint32(MaxMessageSize+1))
-
-	reader := bytes.NewReader(buf.Bytes())
-	_, err := ReadMessage(reader)
-
-	if err == nil {
-		t.Error("expected error for message exceeding max size")
-	}
-}
-
-func TestWriteMessage_TooLarge(t *testing.T) {
-	// Create a message larger than max
-	largeData := make([]byte, MaxMessageSize+1)
-	message := map[string]interface{}{
-		"data": string(largeData),
-	}
-
-	var buf bytes.Buffer
-	err := WriteMessage(&buf, message)
-
-	if err == nil {
-		t.Error("expected error for message exceeding max size")
-	}
-}
-
 // TestNewAllowResponse tests the default allow response constructor.
 func TestNewAllowResponse(t *testing.T) {
 	response := NewAllowResponse()
@@ -696,10 +616,12 @@ func TestEventDeserialization_WebSocketFrame(t *testing.T) {
 
 	rustJSON := `{
 		"correlation_id": "ws-123",
-		"opcode": 1,
+		"opcode": "text",
 		"data": "` + encodedData + `",
-		"direction": "client_to_server",
-		"frame_index": 0
+		"client_to_server": true,
+		"frame_index": 0,
+		"fin": true,
+		"client_ip": "127.0.0.1"
 	}`
 
 	var event WebSocketFrameEvent
@@ -710,11 +632,11 @@ func TestEventDeserialization_WebSocketFrame(t *testing.T) {
 	if event.CorrelationID != "ws-123" {
 		t.Errorf("expected correlation_id 'ws-123', got %s", event.CorrelationID)
 	}
-	if event.Opcode != 1 {
-		t.Errorf("expected opcode 1, got %d", event.Opcode)
+	if event.Opcode != "text" {
+		t.Errorf("expected opcode text, got %s", event.Opcode)
 	}
-	if event.Direction != "client_to_server" {
-		t.Errorf("expected direction 'client_to_server', got %s", event.Direction)
+	if !event.ClientToServer {
+		t.Errorf("expected client_to_server")
 	}
 
 	decoded, err := event.DecodedData()
@@ -729,7 +651,8 @@ func TestEventDeserialization_WebSocketFrame(t *testing.T) {
 // TestConfigureEvent tests configure event deserialization.
 func TestEventDeserialization_Configure(t *testing.T) {
 	rustJSON := `{
-		"agent_id": "rate-limiter-1",
+		"correlation_id": "zentinel-configure-rate-limiter-0",
+		"config_version": null,
 		"config": {
 			"enabled": true,
 			"rate_limit": 100,
@@ -742,9 +665,6 @@ func TestEventDeserialization_Configure(t *testing.T) {
 		t.Fatalf("failed to parse ConfigureEvent: %v", err)
 	}
 
-	if event.AgentID != "rate-limiter-1" {
-		t.Errorf("expected agent_id 'rate-limiter-1', got %s", event.AgentID)
-	}
 	if event.Config["enabled"] != true {
 		t.Errorf("expected enabled true, got %v", event.Config["enabled"])
 	}
@@ -759,8 +679,10 @@ func TestEventDeserialization_RequestComplete(t *testing.T) {
 		"correlation_id": "req-123",
 		"status": 200,
 		"duration_ms": 150,
-		"request_size": 1024,
-		"response_size": 2048
+		"request_body_size": 1024,
+		"response_body_size": 2048,
+		"upstream_attempts": 1,
+		"error": null
 	}`
 
 	var event RequestCompleteEvent
@@ -777,10 +699,10 @@ func TestEventDeserialization_RequestComplete(t *testing.T) {
 	if event.DurationMS != 150 {
 		t.Errorf("expected duration_ms 150, got %d", event.DurationMS)
 	}
-	if event.RequestSize != 1024 {
-		t.Errorf("expected request_size 1024, got %d", event.RequestSize)
+	if event.RequestBodySize != 1024 {
+		t.Errorf("expected request_body_size 1024, got %d", event.RequestBodySize)
 	}
-	if event.ResponseSize != 2048 {
-		t.Errorf("expected response_size 2048, got %d", event.ResponseSize)
+	if event.ResponseBodySize != 2048 {
+		t.Errorf("expected response_body_size 2048, got %d", event.ResponseBodySize)
 	}
 }

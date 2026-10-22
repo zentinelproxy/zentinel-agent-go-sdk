@@ -25,18 +25,18 @@
 </p>
 
 The SDK gives you an `Agent` interface with one method per event, a `Decision`
-builder, and in the `v2` package a runner with Unix socket, gRPC and reverse
-(agent dials the proxy) transports, health and metrics reporting. It is not
-tagged at a usable version; install it from `main`.
+builder, and in the `v2` package a runner with Unix socket and gRPC
+transports.
 
-> **Status (checked on 2026-10-21 against Zentinel 0.6.50): agents built with this SDK do not connect to Zentinel.**
-> The `v2` UDS runner's handshake reply does not match what the proxy expects
-> (the proxy rejects it: `invalid type: null, expected struct UdsCapabilities`),
-> the `v2` gRPC runner panics at startup (`reflect: non-interface type passed to
-> Type.Implements`) and uses a JSON codec rather than protobuf, and the root
-> package's `RunAgent` still speaks the v1 framing. Unit tests pass in CI, but
-> nothing in the repository exercises a real proxy. The quick start shows the
-> intended shape.
+> **Status (checked on 2026-10-22): agents built with this SDK work with Zentinel.**
+> Version 0.3.0 (on `main`, not yet tagged) passes the shared
+> [conformance harness](https://github.com/zentinelproxy/zentinel/tree/sdk/conformance-harness/sdk-conformance)
+> on both transports (handshake, configure, request and response header
+> mutations, block, request-body inspection, reconnect), against Zentinel
+> built from `main`. CI runs it on every change. Configuration delivery (your
+> agent's `config { }` block reaching `OnConfigure`) needs a Zentinel release
+> that includes zentinel#603; with 0.6.50 and earlier, `OnConfigure` is never
+> called. Not yet tagged: see [Install](#install).
 
 ## Quick start
 
@@ -47,7 +47,6 @@ package main
 
 import (
 	"context"
-	"log"
 
 	zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
 	"github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
@@ -64,14 +63,14 @@ func (a *HelloAgent) OnRequest(ctx context.Context, req *zentinel.Request) *zent
 }
 
 func main() {
-	agent := &HelloAgent{BaseAgentV2: *v2.NewBaseAgentV2()}
-	if err := v2.NewAgentRunnerV2(agent).WithSocket("/tmp/hello.sock").Run(); err != nil {
-		log.Fatal(err)
-	}
+	v2.RunAgentV2(&HelloAgent{BaseAgentV2: *v2.NewBaseAgentV2()})
 }
 ```
 
-Run it with `go run .`. It listens on `/tmp/hello.sock`.
+Run it with `go run . --socket /tmp/hello.sock` (or `--grpc 127.0.0.1:50051`
+for the gRPC transport). The same agent is in
+[`examples/hello`](examples/hello/main.go), and CI runs it behind a real
+Zentinel.
 
 Then point Zentinel at the socket. This assumes your config already defines a
 listener and an upstream named `backend`:
@@ -110,8 +109,8 @@ request on the route then reaches `backend` with `X-Hello: from-agent`.
 instead of letting requests through unprocessed, so a wiring mistake shows up
 on the first request.
 
-With this SDK as it is today, that 503 is what you get: see the status note
-above.
+For the gRPC transport, use `grpc "http://127.0.0.1:50051"` instead of
+`unix-socket`.
 
 ## Install
 
@@ -119,9 +118,10 @@ above.
 go get github.com/zentinelproxy/zentinel-agent-go-sdk@main
 ```
 
-Use `@main`. A plain `go get` resolves to the `v0.2.0` tag, whose `go.mod`
-still declares the old module path (`github.com/raskell-io/sentinel-agent-go-sdk`),
-and fails. The module needs Go 1.24 or later (`go.mod`).
+Use `@main` until `v0.3.0` is tagged. A plain `go get` resolves to the
+`v0.2.0` tag, whose `go.mod` still declares the old module path
+(`github.com/raskell-io/sentinel-agent-go-sdk`) and fails; it also predates the
+protocol v2 fixes. The module needs Go 1.24 or later (`go.mod`).
 
 ## API overview
 
@@ -130,16 +130,24 @@ and fails. The module needs Go 1.24 or later (`go.mod`).
   `BaseAgent` to get allow-everything defaults.
 - **`v2.AgentV2`**: adds `Capabilities`, `HealthCheck`, `Metrics`,
   `OnShutdown`, `OnDrain`, `OnCancel`, `OnStreamClosed`. Embed `v2.BaseAgentV2`
-  (created with `v2.NewBaseAgentV2()`).
+  (created with `v2.NewBaseAgentV2()`). `v2.Upgrade(agent)` turns a plain
+  `Agent` into one. `OnConfigure` runs on every connection the proxy makes
+  (it pools connections and reconnects), so make it idempotent.
 - **`Request` / `Response`**: header, path, query, client IP and body accessors.
 - **`Decision`**: `Allow()`, `Deny()`, `Unauthorized()`, `RateLimited()`,
   `Block(status)`, `Redirect(url)`, `Challenge(..)`, then chain
   `AddRequestHeader`, `RemoveRequestHeader`, `AddResponseHeader`, `WithBody`,
   `WithJSONBody`, `WithTag`, `WithRuleID`, `WithConfidence`, `WithMetadata`,
   `WithRoutingMetadata`, body mutations.
-- **`v2.NewAgentRunnerV2`**: `WithSocket`, `WithGRPC`, `WithGRPCTLS`,
-  `WithReverse`; `v2.RunAgentV2(agent)` reads `--socket`, `--grpc`,
-  `--reverse`, `--log-level`, `--json-logs`.
+- **`v2.NewAgentRunnerV2`**: `WithSocket`, `WithGRPC`, `WithGRPCTLS`;
+  `v2.RunAgentV2(agent)` reads `--socket`, `--grpc`, `--log-level`,
+  `--json-logs`. `v2.RunAgent(agent)` does the same for a plain `Agent`.
+- **Lower level**: `v2.ServeUDSConn` serves one Unix socket connection,
+  `v2.RegisterGRPCService` registers the gRPC service on your own server.
+- **Not supported yet**: health and metrics reports are not sent to the proxy;
+  `OnGuardrailInspect` and WebSocket frames are not wired to the transports
+  (frames are allowed). Reverse connections, which the proxy does not use,
+  were removed in 0.3.0, as was the root package's v1 `RunAgent`.
 
 API reference: [pkg.go.dev](https://pkg.go.dev/github.com/zentinelproxy/zentinel-agent-go-sdk).
 Examples are in [`examples/`](examples/).
@@ -147,14 +155,27 @@ Examples are in [`examples/`](examples/).
 ## Development
 
 ```bash
-mise install          # note: mise.toml pins Go 1.22, but go.mod needs 1.24
+mise install          # Go from mise.toml, the same version as go.mod
 go build ./...
 go vet ./...
 go test -race ./...
 gofmt -l .
 ```
 
-CI runs the same steps with the Go version from `go.mod`.
+CI runs the same steps with the Go version from `go.mod`, and the
+[conformance harness](https://github.com/zentinelproxy/zentinel/tree/sdk/conformance-harness/sdk-conformance)
+against `examples/conformance` and `examples/hello`. To run it locally with a
+`zentinel` binary that includes zentinel#603:
+
+```bash
+go build -o /tmp/conformance-agent ./examples/conformance
+python3 path/to/zentinel/sdk-conformance/run.py --zentinel-bin path/to/zentinel \
+  --agent-cmd '/tmp/conformance-agent --socket {socket}' \
+  --grpc-agent-cmd '/tmp/conformance-agent --grpc {grpc}'
+```
+
+The generated gRPC code in `v2/proto` comes from the proxy's
+`crates/agent-protocol/proto/agent_v2.proto` (`go generate ./v2/proto/`).
 
 ## Related
 

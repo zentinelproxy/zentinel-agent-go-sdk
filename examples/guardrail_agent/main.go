@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	zentinel "github.com/zentinelproxy/zentinel-agent-go-sdk"
+	"github.com/zentinelproxy/zentinel-agent-go-sdk/v2"
 )
 
 // GuardrailAgent inspects content for prompt injection and PII.
@@ -122,5 +123,5 @@ func floatPtr(f float64) *float64 {
 }
 
 func main() {
-	zentinel.RunAgent(NewGuardrailAgent())
+	v2.RunAgent(NewGuardrailAgent())
 }
