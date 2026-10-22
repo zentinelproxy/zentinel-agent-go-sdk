@@ -89,14 +89,14 @@ jobs:
       # yet, so zentinel is built from main. Switch to
       # `zentinel-version: <first release with #603>` once it ships.
       - name: Conformance agent (UDS + gRPC)
-        uses: zentinelproxy/zentinel/sdk-conformance@sdk/conformance-harness
+        uses: zentinelproxy/zentinel/sdk-conformance@main
         with:
           zentinel-ref: main
           agent-command: ${{ runner.temp }}/conformance-agent --socket {socket}
           grpc-agent-command: ${{ runner.temp }}/conformance-agent --grpc {grpc}
 
       - name: README quick-start agent
-        uses: zentinelproxy/zentinel/sdk-conformance@sdk/conformance-harness
+        uses: zentinelproxy/zentinel/sdk-conformance@main
         with:
           zentinel-ref: main
           profile: hello

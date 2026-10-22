@@ -30,7 +30,7 @@ transports.
 
 > **Status (checked on 2026-10-22): agents built with this SDK work with Zentinel.**
 > Version 0.3.0 (on `main`, not yet tagged) passes the shared
-> [conformance harness](https://github.com/zentinelproxy/zentinel/tree/sdk/conformance-harness/sdk-conformance)
+> [conformance harness](https://github.com/zentinelproxy/zentinel/tree/main/sdk-conformance)
 > on both transports (handshake, configure, request and response header
 > mutations, block, request-body inspection, reconnect), against Zentinel
 > built from `main`. CI runs it on every change. Configuration delivery (your
@@ -163,7 +163,7 @@ gofmt -l .
 ```
 
 CI runs the same steps with the Go version from `go.mod`, and the
-[conformance harness](https://github.com/zentinelproxy/zentinel/tree/sdk/conformance-harness/sdk-conformance)
+[conformance harness](https://github.com/zentinelproxy/zentinel/tree/main/sdk-conformance)
 against `examples/conformance` and `examples/hello`. To run it locally with a
 `zentinel` binary that includes zentinel#603:
 
