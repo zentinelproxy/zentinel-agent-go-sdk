@@ -29,14 +29,14 @@ builder, and in the `v2` package a runner with Unix socket and gRPC
 transports.
 
 > **Status (checked on 2026-10-22): agents built with this SDK work with Zentinel.**
-> Version 0.3.0 (on `main`, not yet tagged) passes the shared
+> Version 0.3.0 (tag `v0.3.0`) passes the shared
 > [conformance harness](https://github.com/zentinelproxy/zentinel/tree/main/sdk-conformance)
 > on both transports (handshake, configure, request and response header
 > mutations, block, request-body inspection, reconnect), against Zentinel
-> built from `main`. CI runs it on every change. Configuration delivery (your
-> agent's `config { }` block reaching `OnConfigure`) needs a Zentinel release
-> that includes zentinel#603; with 0.6.50 and earlier, `OnConfigure` is never
-> called. Not yet tagged: see [Install](#install).
+> 26.10_8. CI runs it on every change. Configuration delivery (your agent's
+> `config { }` block reaching `OnConfigure`) needs Zentinel 26.10_8 or later,
+> which sends the block on every connection (zentinel#603); with 0.6.50
+> (26.10_7) and earlier, `OnConfigure` is never called.
 
 ## Quick start
 
@@ -115,13 +115,14 @@ For the gRPC transport, use `grpc "http://127.0.0.1:50051"` instead of
 ## Install
 
 ```bash
-go get github.com/zentinelproxy/zentinel-agent-go-sdk@main
+go get github.com/zentinelproxy/zentinel-agent-go-sdk@v0.3.0
 ```
 
-Use `@main` until `v0.3.0` is tagged. A plain `go get` resolves to the
-`v0.2.0` tag, whose `go.mod` still declares the old module path
-(`github.com/raskell-io/sentinel-agent-go-sdk`) and fails; it also predates the
-protocol v2 fixes. The module needs Go 1.24 or later (`go.mod`).
+`v0.3.0` (tagged 2026-10-22) is the first tag with the current module path; a
+plain `go get` resolves to it. Do not use `v0.2.0`: its `go.mod` still declares
+the old module path (`github.com/raskell-io/sentinel-agent-go-sdk`) and fails,
+and it predates the protocol v2 fixes. The module needs Go 1.24 or later
+(`go.mod`).
 
 ## API overview
 
@@ -165,7 +166,7 @@ gofmt -l .
 CI runs the same steps with the Go version from `go.mod`, and the
 [conformance harness](https://github.com/zentinelproxy/zentinel/tree/main/sdk-conformance)
 against `examples/conformance` and `examples/hello`. To run it locally with a
-`zentinel` binary that includes zentinel#603:
+`zentinel` binary from release 26.10_8 or later:
 
 ```bash
 go build -o /tmp/conformance-agent ./examples/conformance
