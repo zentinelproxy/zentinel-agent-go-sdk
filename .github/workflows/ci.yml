@@ -85,19 +85,19 @@ jobs:
           go build -o "$RUNNER_TEMP/conformance-agent" ./examples/conformance
           go build -o "$RUNNER_TEMP/hello-agent" ./examples/hello
 
-      # The configure check needs zentinel#603, which no release includes
-      # yet, so zentinel is built from main. Switch to
-      # `zentinel-version: <first release with #603>` once it ships.
+      # Checked against the pinned Zentinel release. 26.10_8 is the first that
+      # delivers the agent's `config { }` block (zentinel#603), which the
+      # configure check needs.
       - name: Conformance agent (UDS + gRPC)
         uses: zentinelproxy/zentinel/sdk-conformance@main
         with:
-          zentinel-ref: main
+          zentinel-version: 26.10_8
           agent-command: ${{ runner.temp }}/conformance-agent --socket {socket}
           grpc-agent-command: ${{ runner.temp }}/conformance-agent --grpc {grpc}
 
       - name: README quick-start agent
         uses: zentinelproxy/zentinel/sdk-conformance@main
         with:
-          zentinel-ref: main
+          zentinel-version: 26.10_8
           profile: hello
           agent-command: ${{ runner.temp }}/hello-agent --socket {socket}
