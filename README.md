@@ -33,10 +33,11 @@ transports.
 > [conformance harness](https://github.com/zentinelproxy/zentinel/tree/main/sdk-conformance)
 > on both transports (handshake, configure, request and response header
 > mutations, block, request-body inspection, reconnect), against Zentinel
-> built from `main`. CI runs it on every change. Configuration delivery (your
-> agent's `config { }` block reaching `OnConfigure`) needs a Zentinel release
-> that includes zentinel#603; with 0.6.50 and earlier, `OnConfigure` is never
-> called. Not yet tagged: see [Install](#install).
+> 26.10_8. CI runs it on every change. Configuration delivery (your agent's
+> `config { }` block reaching `OnConfigure`) needs Zentinel 26.10_8 or later,
+> which sends the block on every connection (zentinel#603); with 0.6.50
+> (26.10_7) and earlier, `OnConfigure` is never called. Not yet tagged: see
+> [Install](#install).
 
 ## Quick start
 
@@ -165,7 +166,7 @@ gofmt -l .
 CI runs the same steps with the Go version from `go.mod`, and the
 [conformance harness](https://github.com/zentinelproxy/zentinel/tree/main/sdk-conformance)
 against `examples/conformance` and `examples/hello`. To run it locally with a
-`zentinel` binary that includes zentinel#603:
+`zentinel` binary from release 26.10_8 or later:
 
 ```bash
 go build -o /tmp/conformance-agent ./examples/conformance
